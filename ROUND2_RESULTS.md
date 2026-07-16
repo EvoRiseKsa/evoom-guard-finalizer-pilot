@@ -51,6 +51,12 @@ separate head commit.
 The final artifact is evoguard-finalized-evidence-29536858222, uploaded by the
 seal run as GitHub artifact 8390929866.
 
+The repository stores this binary envelope as the UTF-8 Base64 transport file
+evidence/round2/finalized.evb.b64. This is deliberate: the raw-Git finalizer
+rejects changed binary paths rather than silently assigning them a text
+identity. The manifest authenticates the stored transport bytes; decoding it
+must reproduce the finalized.evb SHA-256 below.
+
 ~~~text
 finalized.evb SHA-256:
 c5543eefbbf8e6c285ae4680b0005ec093f18091eacc8312afd862c7c2563cab
@@ -89,11 +95,12 @@ verify-finalized --require-pass, using the externally fetched public key and
 externally reconstructed source/context, returned verified: true and decision:
 ALLOW.
 
-Recheck the durable bundle with a Python interpreter and the published v3.7.0
-evo-guard.pyz whose SHA-256 is recorded above:
+Reconstruct and recheck the durable bundle with a Python interpreter and the
+published v3.7.0 evo-guard.pyz whose SHA-256 is recorded above:
 
 ~~~text
-python -I evo-guard.pyz verify-finalized evidence/round2/finalized.evb --trusted-pub evidence/round2/finalizer-public.pem --expected-source evidence/round2/expected-source.json --expected-context evidence/round2/expected-context.json --require-pass
+python -c "import base64, pathlib; pathlib.Path('round2-finalized.evb').write_bytes(base64.b64decode(pathlib.Path('evidence/round2/finalized.evb.b64').read_bytes()))"
+python -I evo-guard.pyz verify-finalized round2-finalized.evb --trusted-pub evidence/round2/finalizer-public.pem --expected-source evidence/round2/expected-source.json --expected-context evidence/round2/expected-context.json --require-pass
 ~~~
 
 ## External verification inputs
