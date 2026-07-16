@@ -1,1 +1,5 @@
-"""Tiny CLI target used only by the Trusted Finalizer pilot."""
+"""Public calculator API for the Trusted Finalizer pilot target."""
+
+from .ops import add
+
+__all__ = ["add"]
