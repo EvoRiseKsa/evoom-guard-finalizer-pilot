@@ -53,9 +53,9 @@ seal run as GitHub artifact 8390929866.
 
 The repository stores this binary envelope as the UTF-8 Base64 transport file
 evidence/round2/finalized.evb.b64. This is deliberate: the raw-Git finalizer
-rejects changed binary paths rather than silently assigning them a text
-identity. The manifest authenticates the stored transport bytes; decoding it
-must reproduce the finalized.evb SHA-256 below.
+rejects changed file bytes that are not valid UTF-8 rather than silently
+assigning them a text identity. The manifest authenticates the stored transport
+bytes; decoding it must reproduce the finalized.evb SHA-256 below.
 
 ~~~text
 finalized.evb SHA-256:
@@ -99,7 +99,7 @@ Reconstruct and recheck the durable bundle with a Python interpreter and the
 published v3.7.0 evo-guard.pyz whose SHA-256 is recorded above:
 
 ~~~text
-python -c "import base64, pathlib; pathlib.Path('round2-finalized.evb').write_bytes(base64.b64decode(pathlib.Path('evidence/round2/finalized.evb.b64').read_bytes()))"
+python -c "import base64, hashlib, pathlib; data=base64.b64decode(b''.join(pathlib.Path('evidence/round2/finalized.evb.b64').read_bytes().split()), validate=True); assert hashlib.sha256(data).hexdigest() == 'c5543eefbbf8e6c285ae4680b0005ec093f18091eacc8312afd862c7c2563cab', 'digest mismatch'; pathlib.Path('round2-finalized.evb').write_bytes(data)"
 python -I evo-guard.pyz verify-finalized round2-finalized.evb --trusted-pub evidence/round2/finalizer-public.pem --expected-source evidence/round2/expected-source.json --expected-context evidence/round2/expected-context.json --require-pass
 ~~~
 
@@ -119,6 +119,9 @@ listed in evidence/round2/MANIFEST.sha256.
   repositories, malicious runners, or broad detection efficacy.
 - The MANA approval and PR #11 review are not independent review.
 - Docker observation is not a VM-equivalence or host-escape claim.
+- Trusted Finalizer V1 derives only bounded, regular, mode-stable changed files
+  whose bytes are valid UTF-8. A non-UTF-8 addition or modification fails before
+  sealing; this record does not claim a signed ALLOW or DENY for such a path.
 - This round does not bind a release artifact, OCI image, deployment, SBOM, or
   provenance statement to the finalizer decision.
 - PR #12 is intentionally unmerged. The result is evidence of the controlled
