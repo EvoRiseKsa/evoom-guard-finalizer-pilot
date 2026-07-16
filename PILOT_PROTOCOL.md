@@ -1,17 +1,19 @@
 # Round 1 operational protocol
 
-This is an operational exercise of the v3.6.0 reference finalizer, not an
+This is an operational exercise of the v3.6.1 reference finalizer, not an
 independent efficacy evaluation.
 
 ## Preconditions
 
-- The reverify and seal workflows are copied together from the reviewed v3.6.0
+- The reverify and seal workflows are copied together from the reviewed v3.6.1
   release templates.
-- `EVOGUARD_GUARD_ARTIFACT_SHA256` is the reviewed v3.6.0 zipapp digest.
+- `EVOGUARD_GUARD_ARTIFACT_SHA256` is the reviewed v3.6.1 zipapp digest
+  (`4d3e074d707ffdae70e4b3d78e786245c77fd6bdc51782eb1b3f8c4ed0e12a34`).
 - The Ed25519 private key is an Environment secret named `EVOGUARD_FINALIZER_KEY`.
 - The environment has a reviewer distinct from the candidate author before a
   production claim is made. Same-owner accounts do not meet that criterion.
-- `EVOGUARD_REVERIFY_WORKFLOW_ID` is initially absent for the bootstrap attempt.
+- The environment prevents self-review and does not permit administrator bypass.
+- `EVOGUARD_REVERIFY_WORKFLOW_ID` is set to the reviewed reverify workflow ID.
 
 ## Required observations
 
@@ -27,5 +29,15 @@ independent efficacy evaluation.
 5. In separate PRs, confirm that a protected policy/pack change is rejected and
    that the unfixed source produces a black-box `DENY`.
 
-Do not make the display-name check required until the observations are published
-with run IDs and the ruleset/branch-protection behaviour is unambiguous.
+## Completed operational record
+
+The five required observations were recorded in
+[`ROUND1_RESULTS.md`](ROUND1_RESULTS.md). The `EvoGuard Trusted Finalizer`
+display-name check is now a required, strict status check on `main`, alongside
+one current pull-request approval. The v3.6.1 runtime was revalidated by
+[PR #8](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/pull/8),
+with [reverify run 29519477551](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29519477551)
+and [seal run 29519514560](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29519514560).
+
+Future trust-root maintenance must follow
+[`POLICY_MAINTENANCE.md`](POLICY_MAINTENANCE.md), including code-owner review.

@@ -19,9 +19,10 @@ procedure rather than an implicit bypass of the normal candidate gate.
 2. Record the exact release tag, source commit, asset checksum, policy/pack
    digests, and pre-merge validation that motivate the change. Verify a release
    asset against its published `SHA256SUMS` before pinning it.
-3. Obtain a pull-request approval from a different GitHub identity or an
-   organization-controlled reviewer. A same-owner second account provides only
-   a technical separation of roles; it is not independent review.
+3. Obtain the required code-owner and pull-request approval from a different
+   GitHub identity or an organization-controlled reviewer. A same-owner second
+   account provides only a technical separation of roles; it is not independent
+   review.
 4. Preserve all branch protections except the one candidate status check that
    cannot authorize a change to itself. Snapshot the protection settings,
    temporarily remove **only** the `EvoGuard Trusted Finalizer` required check,
