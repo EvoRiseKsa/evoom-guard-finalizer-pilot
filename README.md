@@ -31,7 +31,8 @@ revalidation.
 
 `.evoguard.json`, `security/evoguard-pack/`, and `.github/workflows/` are
 security-policy inputs. `CODEOWNERS` also assigns those paths to the designated
-technical reviewer. Do not modify them in an ordinary candidate pull request.
+technical reviewer, and it is itself listed in the policy's `protected` paths.
+Do not modify them in an ordinary candidate pull request.
 The private signing key belongs only in the `evoguard-finalizer` Environment,
 never in the repository, an artifact, or a normal repository secret. That
 Environment requires the designated reviewer, prevents self-review, and does
