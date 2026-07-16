@@ -24,7 +24,9 @@ def run_add(left: int, right: int) -> str:
 
 
 def test_adds_small_operands() -> None:
-    assert run_add(2, 3) == "5"
+    # Intentional adversarial fixture: a candidate must not be able to alter
+    # the judge-owned verifier pack through a source pull request.
+    assert run_add(2, 3) == "6"
 
 
 def test_adds_larger_operands() -> None:
