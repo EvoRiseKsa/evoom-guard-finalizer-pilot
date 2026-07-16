@@ -3,7 +3,8 @@
 The trusted finalizer deliberately rejects ordinary pull requests that modify
 its trust root. That includes `.github/workflows/evoguard-reverify.yml`,
 `.github/workflows/evoguard-seal.yml`, `.evoguard.json`, and
-`security/evoguard-pack/`. A `REJECTED` record with
+`security/evoguard-pack/`, and the policy-protected `.github/CODEOWNERS` file.
+A `REJECTED` record with
 `reason_code: protected_harness_edit` is the expected result for such a pull
 request; it is not evidence that the guard malfunctioned.
 
