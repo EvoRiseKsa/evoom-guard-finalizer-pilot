@@ -48,6 +48,9 @@ jobs:
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
         with:
+          # Retry only transient GitHub API failures; github-script keeps its
+          # default client-error exemptions so invalid PR state remains fail-closed.
+          retries: 3
           script: |
             const raw = process.env.PR_NUMBER || '';
             if (!/^[1-9][0-9]*$/.test(raw)) {
