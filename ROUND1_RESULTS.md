@@ -13,6 +13,7 @@ endorsement of the core project.
 | Cancellation after metadata | [fixture PR #3](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/pull/3), [cancelled reverify](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29515358484), [reconcile](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29515381964) | Metadata created the attempt-bound check, the run was cancelled before the judge began, and the exact check completed `DENY`; no seal key was used. |
 | Judge-owned pack modification | [fixture PR #4](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/pull/4), [reverify](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29515899685), [seal](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29515940764) | Guard produced `REJECTED` for a protected judge file. The seal retained signed `DENY` evidence, and the bundle verified externally. |
 | Source-only change that leaves the defect unfixed | [fixture PR #5](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/pull/5), [reverify](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29516136994), [seal](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29516182771) | The external pack ran 2 tests, reported `FAIL` / `tests_failed`, and the finalizer completed the attempt-bound check `DENY`. The signed bundle verified externally. |
+| Fresh v3.6.1 source-only revalidation | [PR #8](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/pull/8), [reverify](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29519477551), [seal](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29519514560) | The v3.6.1 artifact checksum was verified before execution. The finalizer completed `ALLOW`; its signed bundle verified against independently API-derived base/head commits, trees, candidate, effective-policy, verifier-pack, and artifact digests. |
 
 The adversarial fixture PRs are closed and were never merged. Their signed
 evidence remains subject to the repository's Actions retention policy.
@@ -31,11 +32,15 @@ evaluation independent.
 - `MANA-awam` supplied the required environment approval, but it is controlled
   by the same project owner. It is a technical separation-of-roles exercise,
   not an independent review.
-- The sealed Guard executable was the immutable `v3.6.0` release asset pinned
-  by `EVOGUARD_GUARD_ARTIFACT_SHA256`. The reverify workflow includes a
-  hash-locked Python/pytest bootstrap correction that is pending the core
-  `v3.6.1` release; this pilot must update its pin and repeat a clean positive
-  run after that release.
+- The sealed Guard executable is the immutable `v3.6.1` release asset pinned
+  by `EVOGUARD_GUARD_ARTIFACT_SHA256`
+  (`4d3e074d707ffdae70e4b3d78e786245c77fd6bdc51782eb1b3f8c4ed0e12a34`).
+  PR #8 completed the required clean source-only revalidation after the pin
+  update.
+- `main` now requires the strict finalizer check and one current pull-request
+  approval. The finalizer Environment prevents self-review and administrator
+  bypass. These are pilot governance controls, not proof of independent or
+  production-grade review.
 - These few fixtures do not measure false positives, coverage, resistance to
   every hostile runner escape, or effectiveness on external repositories.
 - The next credible evidence step is a pre-registered evaluation by a

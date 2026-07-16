@@ -1,0 +1,10 @@
+# Governance ownership for the trusted-finalizer pilot's trust root.
+# This is a technical separation-of-roles control, not independent review:
+# @MANA-awam and @EvoRiseKsa belong to the same project owner.
+/.github/CODEOWNERS @MANA-awam
+/.github/workflows/evoguard-reverify.yml @MANA-awam
+/.github/workflows/evoguard-seal.yml @MANA-awam
+/.evoguard.json @MANA-awam
+/security/evoguard-pack/ @MANA-awam
+/security/finalizer-public.pem @MANA-awam
+/POLICY_MAINTENANCE.md @MANA-awam
