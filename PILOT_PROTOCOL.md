@@ -1,5 +1,10 @@
 # Round 1 operational protocol
 
+> **Historical v3.6.1 record.** This protocol preserves the original Round 1
+> exercise and its v3.6.1 asset pin. Do not use that historical pin for a new
+> run. See [`STATUS.md`](STATUS.md) and [`ROUND2_RESULTS.md`](ROUND2_RESULTS.md)
+> for the current v3.7.0 pilot reference and its controlled raw-Git record.
+
 This is an operational exercise of the v3.6.1 reference finalizer, not an
 independent efficacy evaluation.
 
