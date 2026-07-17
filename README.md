@@ -1,9 +1,9 @@
 # EvoOM Guard Trusted Finalizer pilot
 
 This repository is a controlled operational pilot for the
-[EvoOM Guard Trusted Finalizer](https://github.com/EvoRiseKsa/EvoOM-Guard-m/releases/tag/v3.6.1).
-The finalizer was introduced in v3.6.0; this pilot pins its executable runtime
-to the published v3.6.1 maintenance release.
+[EvoOM Guard Trusted Finalizer](https://github.com/EvoRiseKsa/EvoOM-Guard-m/releases/tag/v3.7.0).
+The finalizer was introduced in v3.6.0. Its current trusted workflow templates
+and executable pin use the published immutable v3.7.0 release asset.
 It is intentionally small so that the authority boundary can be tested without
 claiming an independent security review, broad efficacy study, or production
 merge enforcement.
@@ -27,12 +27,25 @@ Trusted Finalizer` check is now a required, strict status check on `main`.
 cancelled/failed attempt → fresh PASS sequence and the separate v3.6.1
 revalidation.
 
+## Round 2 raw-Git finalizer record
+
+[`ROUND2_RESULTS.md`](ROUND2_RESULTS.md) records a fresh, deliberately
+source-only and unmerged v3.7.0 exercise. It records raw-Git derivation and
+comparison of the candidate, policy, and verifier-pack bindings before the
+privileged seal, plus verification of the resulting signed evidence against
+fresh Git/API-derived context. It is still a controlled same-owner operational
+exercise, not independent review, broad efficacy evidence, or production
+merge-enforcement validation.
+
 ## Security boundary
 
 `.evoguard.json`, `security/evoguard-pack/`, and `.github/workflows/` are
 security-policy inputs. `CODEOWNERS` also assigns those paths to the designated
 technical reviewer, and it is itself listed in the policy's `protected` paths.
 Do not modify them in an ordinary candidate pull request.
+In the v3.7.0 pilot templates, both the reverify handoff and the key-bearing
+seal derive and compare these bindings from immutable raw Git objects before
+any sealing step can read the private key.
 The private signing key belongs only in the `evoguard-finalizer` Environment,
 never in the repository, an artifact, or a normal repository secret. That
 Environment requires the designated reviewer, prevents self-review, and does
