@@ -1,0 +1,309 @@
+# EvoGuard template — GitHub Artifact Attestation verification only.
+#
+# This file is intentionally NOT under .github/workflows/ and is therefore
+# inactive in the trusted-finalizer pilot. Copy it only into a repository that
+# has an actual protected build/release path, then complete the protected
+# Environment configuration described in README.md. It deliberately has no
+# workflow_dispatch inputs: artifact identity and signer policy are trust-root
+# configuration, not data supplied by a candidate or a dispatcher.
+name: EvoGuard Verify GitHub Artifact Attestation
+
+on:
+  workflow_dispatch:
+
+# Every job permission is declared below. The verifier does not need a write
+# token, an OIDC token, a checkout, a candidate worktree, or a finalizer key.
+permissions: {}
+
+jobs:
+  verify:
+    # A manually selected ref is not a trust root. Refuse every ref except the
+    # current default branch containing the reviewed template.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    # Create this Environment before enabling the copied workflow. It must use
+    # protected branches, required review, no self-review, and no administrator
+    # bypass. Its variables are the reviewed verifier policy for one subject.
+    environment: evoguard-artifact-attestation
+    permissions:
+      # The GitHub CLI uses the job token only to read the same repository's
+      # public/authorized release and attestation records. It receives no write
+      # capability and no access to a finalizer or admission signing key.
+      attestations: read
+      contents: read
+
+    env:
+      # All seven values must be Environment-scoped variables, never dispatcher
+      # inputs, PR values, repository files, or ordinary repository secrets.
+      EVOGUARD_ATTESTATION_ARTIFACT_URL: ${{ vars.EVOGUARD_ATTESTATION_ARTIFACT_URL }}
+      EVOGUARD_ATTESTATION_ARTIFACT_SHA256: ${{ vars.EVOGUARD_ATTESTATION_ARTIFACT_SHA256 }}
+      EVOGUARD_ATTESTATION_SOURCE_REPOSITORY: ${{ vars.EVOGUARD_ATTESTATION_SOURCE_REPOSITORY }}
+      EVOGUARD_ATTESTATION_SIGNER_WORKFLOW: ${{ vars.EVOGUARD_ATTESTATION_SIGNER_WORKFLOW }}
+      EVOGUARD_ATTESTATION_SIGNER_DIGEST: ${{ vars.EVOGUARD_ATTESTATION_SIGNER_DIGEST }}
+      EVOGUARD_ATTESTATION_SOURCE_REF: ${{ vars.EVOGUARD_ATTESTATION_SOURCE_REF }}
+      EVOGUARD_ATTESTATION_SOURCE_DIGEST: ${{ vars.EVOGUARD_ATTESTATION_SOURCE_DIGEST }}
+
+      # gh reads an attestation through the GitHub API. This read-only job token
+      # is intentionally passed explicitly rather than inheriting an ambient
+      # credential. For public repositories it is still not an authority to
+      # alter the subject, the attestation, or the finalizer decision.
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Validate the protected attestation policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - "$RUNNER_TEMP/attestation-config.json" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          from urllib.parse import urlsplit
+
+          target = sys.argv[1]
+          values = {
+              "artifact_url": os.environ.get("EVOGUARD_ATTESTATION_ARTIFACT_URL", ""),
+              "artifact_sha256": os.environ.get("EVOGUARD_ATTESTATION_ARTIFACT_SHA256", ""),
+              "source_repository": os.environ.get("EVOGUARD_ATTESTATION_SOURCE_REPOSITORY", ""),
+              "signer_workflow": os.environ.get("EVOGUARD_ATTESTATION_SIGNER_WORKFLOW", ""),
+              "signer_digest": os.environ.get("EVOGUARD_ATTESTATION_SIGNER_DIGEST", ""),
+              "source_ref": os.environ.get("EVOGUARD_ATTESTATION_SOURCE_REF", ""),
+              "source_digest": os.environ.get("EVOGUARD_ATTESTATION_SOURCE_DIGEST", ""),
+          }
+          repository = os.environ.get("GITHUB_REPOSITORY", "")
+          default_branch = os.environ.get("GITHUB_REF", "")
+
+          def reject(message: str) -> None:
+              raise SystemExit(f"invalid protected attestation configuration: {message}")
+
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+              reject("GITHUB_REPOSITORY is not a canonical owner/repository")
+          if default_branch != f"refs/heads/{os.environ.get('GITHUB_EVENT_REPOSITORY_DEFAULT_BRANCH', '')}":
+              # The job-level if is the authoritative branch control. This
+              # second check only detects a malformed copied template/runtime.
+              reject("workflow is not executing from the configured default branch")
+          if values["source_repository"] != repository:
+              reject("source_repository must equal this repository; use a separately reviewed template for cross-repository builders")
+          if re.fullmatch(r"[0-9a-f]{64}", values["artifact_sha256"]) is None:
+              reject("artifact_sha256 must be exactly 64 lowercase hexadecimal characters")
+          for key in ("signer_digest", "source_digest"):
+              if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", values[key]) is None:
+                  reject(f"{key} must be an exact lowercase Git object ID")
+          if re.fullmatch(r"refs/(?:heads|tags)/[A-Za-z0-9][A-Za-z0-9._/-]*", values["source_ref"]) is None or "//" in values["source_ref"]:
+              reject("source_ref must be a canonical refs/heads/... or refs/tags/... value")
+
+          expected_workflow = re.escape(repository) + r"/\.github/workflows/[A-Za-z0-9][A-Za-z0-9_.-]*\.ya?ml"
+          if re.fullmatch(expected_workflow, values["signer_workflow"]) is None:
+              reject("signer_workflow must name one exact workflow in this repository")
+
+          parsed = urlsplit(values["artifact_url"])
+          prefix = f"/{repository}/releases/download/"
+          if (parsed.scheme != "https" or parsed.netloc != "github.com" or
+                  parsed.username is not None or parsed.password is not None or
+                  parsed.query or parsed.fragment or not parsed.path.startswith(prefix) or
+                  "%" in parsed.path):
+              reject("artifact_url must be a canonical query-free https://github.com/<this-repo>/releases/download/... URL")
+          remainder = parsed.path[len(prefix):]
+          parts = remainder.split("/")
+          if len(parts) != 2:
+              reject("artifact_url must contain exactly one release tag and one asset filename")
+          tag, asset = parts
+          if (re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", tag) is None or
+                  re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", asset) is None):
+              reject("artifact_url tag and asset name contain unsupported characters")
+
+          record = {
+              "artifact_sha256": values["artifact_sha256"],
+              "artifact_url": values["artifact_url"],
+              "format": "EVOGUARD_GITHUB_ATTESTATION_CONFIG_V1",
+              "release_asset": asset,
+              "release_tag": tag,
+              "signer_digest": values["signer_digest"],
+              "signer_workflow": values["signer_workflow"],
+              "source_digest": values["source_digest"],
+              "source_ref": values["source_ref"],
+              "source_repository": values["source_repository"],
+          }
+          with open(target, "x", encoding="utf-8", newline="\n") as handle:
+              json.dump(record, handle, sort_keys=True, separators=(",", ":"))
+              handle.write("\n")
+          PY
+        env:
+          # `github.event.repository.default_branch` is supplied separately so
+          # the Python validator does not have to parse an event payload.
+          GITHUB_EVENT_REPOSITORY_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - name: Require the provider verifier and its strict flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v gh >/dev/null
+          GH_VERSION="$(gh --version | awk 'NR == 1 { print $3 }')"
+          [[ "$GH_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          HELP="$(gh attestation verify --help)"
+          for required_flag in \
+            --repo --signer-workflow --signer-digest --source-ref --source-digest \
+            --predicate-type --cert-oidc-issuer --deny-self-hosted-runners --limit --format; do
+            grep -Fq -- "$required_flag" <<<"$HELP" || {
+              echo "required gh attestation verify flag unavailable: $required_flag" >&2
+              exit 1
+            }
+          done
+          printf '%s\n' "$GH_VERSION" > "$RUNNER_TEMP/gh-version.txt"
+
+      - name: Download only the protected exact subject bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/attestation-config.json"
+          artifact="$RUNNER_TEMP/attested-artifact"
+          url="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["artifact_url"])' "$config")"
+          expected="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["artifact_sha256"])' "$config")"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
+            --output "$artifact" "$url"
+          test -f "$artifact"
+          test ! -L "$artifact"
+          test "$(stat --format=%s "$artifact")" -gt 0
+          test "$(stat --format=%s "$artifact")" -le 2147483648
+          actual="$(sha256sum "$artifact" | awk '{print $1}')"
+          test "$actual" = "$expected"
+
+      - name: Verify GitHub-signed attestation with an exact signer policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          config="$RUNNER_TEMP/attestation-config.json"
+          artifact="$RUNNER_TEMP/attested-artifact"
+          output="$RUNNER_TEMP/github-attestation-verification.json"
+          source_repository="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["source_repository"])' "$config")"
+          signer_workflow="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["signer_workflow"])' "$config")"
+          signer_digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["signer_digest"])' "$config")"
+          source_ref="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["source_ref"])' "$config")"
+          source_digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["source_digest"])' "$config")"
+          gh attestation verify "$artifact" \
+            --repo "$source_repository" \
+            --signer-workflow "$signer_workflow" \
+            --signer-digest "$signer_digest" \
+            --source-ref "$source_ref" \
+            --source-digest "$source_digest" \
+            --predicate-type "https://slsa.dev/provenance/v1" \
+            --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+            --deny-self-hosted-runners \
+            --limit 1 \
+            --format json > "$output"
+          test -f "$output"
+          test ! -L "$output"
+          test "$(stat --format=%s "$output")" -gt 1
+          test "$(stat --format=%s "$output")" -le 8388608
+          # Re-hash the subject after gh has read it: a changed subject cannot
+          # become the receipt subject through a time-of-check/time-of-use gap.
+          expected="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["artifact_sha256"])' "$config")"
+          actual="$(sha256sum "$artifact" | awk '{print $1}')"
+          test "$actual" = "$expected"
+
+      - name: Write a bounded receipt without trusting predicate metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/attestation-config.json" \
+            "$RUNNER_TEMP/attested-artifact" \
+            "$RUNNER_TEMP/github-attestation-verification.json" \
+            "$RUNNER_TEMP/gh-version.txt" \
+            "$RUNNER_TEMP/attestation-receipt.json" <<'PY'
+          import hashlib
+          import json
+          import os
+          import stat
+          import sys
+
+          config_path, artifact_path, result_path, version_path, receipt_path = sys.argv[1:]
+
+          def regular_file(path: str, maximum: int) -> os.stat_result:
+              info = os.lstat(path)
+              if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or not (0 < info.st_size <= maximum):
+                  raise SystemExit(f"expected bounded regular file: {path}")
+              return info
+
+          def stable_sha256(path: str, maximum: int) -> tuple[str, int]:
+              before = regular_file(path, maximum)
+              digest = hashlib.sha256()
+              with open(path, "rb", buffering=0) as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              after = regular_file(path, maximum)
+              if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns):
+                  raise SystemExit(f"file changed while hashing: {path}")
+              return digest.hexdigest(), after.st_size
+
+          config_bytes = open(config_path, "rb").read()
+          config = json.loads(config_bytes)
+          if json.dumps(config, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n" != config_bytes:
+              raise SystemExit("attestation configuration is not canonical JSON")
+          artifact_sha256, artifact_size = stable_sha256(artifact_path, 2147483648)
+          if artifact_sha256 != config["artifact_sha256"]:
+              raise SystemExit("subject changed after GitHub attestation verification")
+          result_sha256, _ = stable_sha256(result_path, 8388608)
+          result = json.loads(open(result_path, "rb").read())
+          if not isinstance(result, list) or len(result) != 1 or not isinstance(result[0], dict):
+              raise SystemExit("gh did not return exactly one verified attestation object")
+          # Do not parse statement.predicate here. GitHub documents it as
+          # workflow-controllable metadata; gh's successful cryptographic and
+          # identity verification is the provider-specific enforcement point.
+          version = open(version_path, encoding="utf-8").read().strip()
+          if not version:
+              raise SystemExit("missing GitHub CLI version")
+          receipt = {
+              "artifact": {
+                  "kind": "artifact-sha256",
+                  "sha256": artifact_sha256,
+                  "size": artifact_size,
+              },
+              "format": "EVOGUARD_GITHUB_ATTESTATION_RECEIPT_V1",
+              "identity": (
+                  "github-artifact-attestation:v1:"
+                  f"{config['source_repository']}@{config['source_digest']}:"
+                  f"{config['release_tag']}/{config['release_asset']}"
+              ),
+              "policy": {
+                  "attestation_limit": 1,
+                  "cert_oidc_issuer": "https://token.actions.githubusercontent.com",
+                  "deny_self_hosted_runners": True,
+                  "predicate_type": "https://slsa.dev/provenance/v1",
+                  "signer_digest": config["signer_digest"],
+                  "signer_workflow": config["signer_workflow"],
+                  "source_digest": config["source_digest"],
+                  "source_ref": config["source_ref"],
+                  "source_repository": config["source_repository"],
+              },
+              "verification": {
+                  "gh_version": version,
+                  "provider": "github-artifact-attestation",
+                  "verified_attestation_count": len(result),
+                  "verification_output_sha256": result_sha256,
+              },
+          }
+          with open(receipt_path, "x", encoding="utf-8", newline="\n") as handle:
+              json.dump(receipt, handle, sort_keys=True, separators=(",", ":"))
+              handle.write("\n")
+          PY
+          sha256sum "$RUNNER_TEMP/attestation-receipt.json" > "$RUNNER_TEMP/attestation-receipt.sha256"
+
+      # The uploaded receipt is data, not an admission decision or a secret.
+      # A later key-bearing V2 admission workflow must download it by exact run
+      # ID, re-run provider verification, and bind it only to a matching
+      # externally verified finalizer ALLOW.
+      - name: Upload receipt for a separately protected admission step
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evoguard-github-attestation-receipt-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/attestation-receipt.json
+            ${{ runner.temp }}/attestation-receipt.sha256
+          if-no-files-found: warn
+          overwrite: false
+          retention-days: 30

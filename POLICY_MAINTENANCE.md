@@ -39,6 +39,13 @@ procedure rather than an implicit bypass of the normal candidate gate.
    independently supplied public key and API-derived run/revision/tree context.
    Publish the outcome, including any denial or failure.
 
+The inactive
+[`templates/github-artifact-attestation/`](templates/github-artifact-attestation/)
+reference is also security-sensitive. It is not an active pilot workflow, but
+an adopter who copies it into `.github/workflows/` makes its exact repository,
+signer-workflow, and protected Environment configuration part of the admission
+trust root. Review any change or copied derivative under this same procedure.
+
 ## Non-goals and stop conditions
 
 This procedure does not make the software, reviewer, or evaluation

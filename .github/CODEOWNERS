@@ -8,3 +8,4 @@
 /security/evoguard-pack/ @MANA-awam
 /security/finalizer-public.pem @MANA-awam
 /POLICY_MAINTENANCE.md @MANA-awam
+/templates/github-artifact-attestation/ @MANA-awam

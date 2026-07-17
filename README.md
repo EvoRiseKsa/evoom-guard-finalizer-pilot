@@ -59,3 +59,14 @@ not permit administrator bypass.
 
 The explicit, audited procedure for changing those trust-root inputs is in
 [`POLICY_MAINTENANCE.md`](POLICY_MAINTENANCE.md).
+
+## Future artifact-attestation integration (inactive)
+
+[`templates/github-artifact-attestation/`](templates/github-artifact-attestation/)
+contains an **inactive** copy template for a future protected build/release
+repository. It verifies a real GitHub Artifact Attestation using an exact
+repository and signer-workflow policy, then writes a bounded receipt for a
+separate artifact-admission step. It is not installed in this pilot and does
+not change its v3.7.0 controlled finalizer claim. See the template README for
+the required protected Environment, the exact trust relation, and the reason a
+GitHub Release attestation cannot be substituted for an Artifact Attestation.

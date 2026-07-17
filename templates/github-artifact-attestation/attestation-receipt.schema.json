@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EvoGuard GitHub Artifact Attestation Receipt V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifact",
+    "format",
+    "identity",
+    "policy",
+    "verification"
+  ],
+  "properties": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sha256", "size"],
+      "properties": {
+        "kind": {"const": "artifact-sha256"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size": {"type": "integer", "minimum": 1, "maximum": 2147483648}
+      }
+    },
+    "format": {"const": "EVOGUARD_GITHUB_ATTESTATION_RECEIPT_V1"},
+    "identity": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attestation_limit",
+        "cert_oidc_issuer",
+        "deny_self_hosted_runners",
+        "predicate_type",
+        "signer_digest",
+        "signer_workflow",
+        "source_digest",
+        "source_ref",
+        "source_repository"
+      ],
+      "properties": {
+        "attestation_limit": {"const": 1},
+        "cert_oidc_issuer": {"const": "https://token.actions.githubusercontent.com"},
+        "deny_self_hosted_runners": {"const": true},
+        "predicate_type": {"const": "https://slsa.dev/provenance/v1"},
+        "signer_digest": {"type": "string", "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$"},
+        "signer_workflow": {"type": "string", "minLength": 1, "maxLength": 512},
+        "source_digest": {"type": "string", "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$"},
+        "source_ref": {"type": "string", "pattern": "^refs/(?:heads|tags)/.+$"},
+        "source_repository": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"}
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gh_version",
+        "provider",
+        "verified_attestation_count",
+        "verification_output_sha256"
+      ],
+      "properties": {
+        "gh_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "provider": {"const": "github-artifact-attestation"},
+        "verified_attestation_count": {"const": 1},
+        "verification_output_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}
