@@ -8,6 +8,12 @@ It is intentionally small so that the authority boundary can be tested without
 claiming an independent security review, broad efficacy study, or production
 merge enforcement.
 
+> **Current status.** [`STATUS.md`](STATUS.md) identifies the active v3.7.0
+> reference, distinguishes historical Round 1 from current Round 2 evidence,
+> and records the limits and pilot-closure procedure. This repository is
+> source-available under the included [`LICENSE`](LICENSE); it is not
+> OSI-approved open source.
+
 ## What this pilot proves
 
 A source-only pull request fixed a deliberately broken CLI operation. The base
@@ -19,7 +25,7 @@ It does **not** prove that EvoOM Guard is generally correct, that Docker is a VM
 boundary, or that the result is independent. A second account controlled by the
 same owner may exercise the workflow but cannot provide independent review.
 
-## Round 1 protocol
+## Round 1 protocol (historical v3.6.1)
 
 The pilot follows [`PILOT_PROTOCOL.md`](PILOT_PROTOCOL.md). The `EvoGuard
 Trusted Finalizer` check is now a required, strict status check on `main`.
