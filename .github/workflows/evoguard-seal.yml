@@ -265,6 +265,9 @@ jobs:
           CONTROL_HEAD_TREE_SHA: ${{ steps.control.outputs.head_tree_sha }}
           GUARD_ARTIFACT_SHA256: ${{ vars.EVOGUARD_GUARD_ARTIFACT_SHA256 }}
         with:
+          # Retry only transient GitHub API failures; stale or invalid PR
+          # bindings are still rejected by the script below.
+          retries: 3
           script: |
             const { owner, repo } = context.repo;
 
