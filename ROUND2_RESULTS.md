@@ -57,6 +57,10 @@ rejects changed file bytes that are not valid UTF-8 rather than silently
 assigning them a text identity. The manifest authenticates the stored transport
 bytes; decoding it must reproduce the finalized.evb SHA-256 below.
 
+`evidence/round2/**` is pinned to `eol=lf` in `.gitattributes`. This keeps the
+manifest's byte-level checks reproducible for consumers whose Git configuration
+otherwise rewrites text line endings (for example, Windows `core.autocrlf`).
+
 ~~~text
 finalized.evb SHA-256:
 c5543eefbbf8e6c285ae4680b0005ec093f18091eacc8312afd862c7c2563cab
