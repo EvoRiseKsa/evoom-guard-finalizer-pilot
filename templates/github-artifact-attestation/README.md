@@ -81,7 +81,11 @@ The copied workflow:
   ```
 
 - refuses a GitHub CLI missing any required strict flag, and requires exactly
-  one verified result from its bounded `--limit 1` lookup;
+  one verified result from its `--limit 1` lookup;
+- starts the provider process under an Ubuntu Bash `ulimit -f` cap before it
+  redirects either stream: each temporary provider-output file is capped at
+  8 MiB while it is being written, and a failure exposes at most 64 KiB of
+  stderr to the Actions log;
 - writes a bounded JSON receipt containing the subject digest, fixed policy,
   GitHub CLI version, count of verified attestations, and SHA-256 of raw CLI
   output; and

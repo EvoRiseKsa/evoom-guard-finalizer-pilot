@@ -179,26 +179,47 @@ jobs:
           config="$RUNNER_TEMP/attestation-config.json"
           artifact="$RUNNER_TEMP/attested-artifact"
           output="$RUNNER_TEMP/github-attestation-verification.json"
+          stderr="$RUNNER_TEMP/github-attestation-verification.stderr"
+          # GitHub-hosted Ubuntu runners use Bash's `ulimit -f` unit of 512-byte
+          # blocks.  Apply the cap before either provider stream is redirected:
+          # a post-hoc `stat` cannot prevent a buggy or malicious provider from
+          # first exhausting runner storage.  Both temporary streams are capped
+          # at the same 8 MiB maximum that the receipt step accepts.
+          max_output_bytes=8388608
+          max_file_blocks=$((max_output_bytes / 512))
           source_repository="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["source_repository"])' "$config")"
           signer_workflow="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["signer_workflow"])' "$config")"
           signer_digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["signer_digest"])' "$config")"
           source_ref="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["source_ref"])' "$config")"
           source_digest="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["source_digest"])' "$config")"
-          gh attestation verify "$artifact" \
-            --repo "$source_repository" \
-            --signer-workflow "$signer_workflow" \
-            --signer-digest "$signer_digest" \
-            --source-ref "$source_ref" \
-            --source-digest "$source_digest" \
-            --predicate-type "https://slsa.dev/provenance/v1" \
-            --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
-            --deny-self-hosted-runners \
-            --limit 1 \
-            --format json > "$output"
+          if ! (
+            ulimit -f "$max_file_blocks"
+            exec gh attestation verify "$artifact" \
+              --repo "$source_repository" \
+              --signer-workflow "$signer_workflow" \
+              --signer-digest "$signer_digest" \
+              --source-ref "$source_ref" \
+              --source-digest "$source_digest" \
+              --predicate-type "https://slsa.dev/provenance/v1" \
+              --cert-oidc-issuer "https://token.actions.githubusercontent.com" \
+              --deny-self-hosted-runners \
+              --limit 1 \
+              --format json > "$output" 2> "$stderr"
+          ); then
+            # Never echo an unbounded provider error into the Actions log.
+            if test -f "$stderr" && test ! -L "$stderr"; then
+              head -c 65536 "$stderr" >&2 || true
+            fi
+            echo "GitHub attestation verification failed or exceeded its output limit" >&2
+            exit 1
+          fi
           test -f "$output"
           test ! -L "$output"
           test "$(stat --format=%s "$output")" -gt 1
-          test "$(stat --format=%s "$output")" -le 8388608
+          test "$(stat --format=%s "$output")" -le "$max_output_bytes"
+          test -f "$stderr"
+          test ! -L "$stderr"
+          test "$(stat --format=%s "$stderr")" -le "$max_output_bytes"
           # Re-hash the subject after gh has read it: a changed subject cannot
           # become the receipt subject through a time-of-check/time-of-use gap.
           expected="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["artifact_sha256"])' "$config")"
