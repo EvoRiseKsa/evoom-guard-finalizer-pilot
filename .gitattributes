@@ -1,3 +1,6 @@
 # Round 2 evidence is authenticated byte-for-byte by MANIFEST.sha256.
 # Keep checkout bytes stable when a consumer has core.autocrlf enabled.
 evidence/round2/** text eol=lf
+
+# Keep Round 3 evidence checkout bytes stable; its manifest records digests.
+evidence/round3/** text eol=lf
