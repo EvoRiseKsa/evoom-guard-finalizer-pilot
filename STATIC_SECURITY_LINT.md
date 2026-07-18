@@ -12,20 +12,22 @@ the default branch. It does not check out the PR, execute its code, read a
 repository or Environment secret, upload SARIF, or receive write permissions.
 
 Instead, the base-owned `github-script` step asks GitHub's Git API for the
-exact current PR-head tree and writes only bounded workflow/local-action YAML
-blobs into a disposable snapshot. Symlinks, a truncated tree, more than 64
-inputs, a blob over 512 KiB, or more than 2 MiB total fail closed. Both
-analyzers see that snapshot read-only; their containers have no network or
-Linux capabilities and constrained CPU, memory, process, and temporary-storage
+exact current PR-head tree and writes only bounded workflow and local-action
+YAML blobs into a disposable snapshot. Symlinks, a truncated tree, more than
+64 inputs, a blob over 512 KiB, or more than 2 MiB total fail closed.
+`actionlint` receives only candidate workflow files because it validates
+workflow syntax; `zizmor` receives the read-only snapshot and collects both
+workflows and composite actions. Their containers have no network or Linux
+capabilities and constrained CPU, memory, process, and temporary-storage
 budgets. Before either analyzer prints candidate-controlled parser output, the
 workflow temporarily disables GitHub workflow-command processing.
 
-The candidate's `.github/zizmor.yml` is intentionally only data. The workflow
-fetches the baseline policy from the protected base workflow SHA and passes it
-explicitly, so a candidate cannot disable an audit by editing its own config.
-It also rejects a candidate workflow that contains a zizmor inline-ignore
-directive. The workflow therefore does not rely on a candidate-supplied
-suppression rule.
+The candidate's `.github/zizmor.yml` is neither mounted nor honored. The
+workflow fetches the baseline policy from the protected base workflow SHA and
+passes it explicitly, so a candidate cannot disable an audit by editing its
+own config. It also rejects a candidate workflow that contains a zizmor
+inline-ignore directive. The workflow therefore does not rely on a
+candidate-supplied suppression rule.
 
 ## Pinned analysis inputs
 

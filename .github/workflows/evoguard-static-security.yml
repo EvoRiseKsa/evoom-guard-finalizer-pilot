@@ -82,7 +82,7 @@ jobs:
 
             const allowed = (entry) => {
               if (entry.type !== 'blob' || entry.mode !== '100644') return false;
-              return /^(?:\.github\/workflows\/[^/]+\.ya?ml|\.github\/actions\/.+\/action\.ya?ml|\.github\/zizmor\.ya?ml)$/.test(entry.path);
+              return /^(?:\.github\/workflows\/[^/]+\.ya?ml|\.github\/actions\/.+\/action\.ya?ml)$/.test(entry.path);
             };
             const entries = tree.data.tree.filter(allowed);
             if (entries.length === 0 || entries.length > 64) {
@@ -146,7 +146,7 @@ jobs:
           set -euo pipefail
           docker pull "$ACTIONLINT_IMAGE"
 
-      - name: Parse every candidate workflow and local action
+      - name: Parse every candidate workflow
         env:
           ACTIONLINT_IMAGE: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
         run: |
@@ -157,7 +157,7 @@ jobs:
           stop_commands
           trap resume_commands EXIT
           mapfile -d '' files < <(
-            find "$GITHUB_WORKSPACE/evoguard-static-snapshot/.github" -type f \
+            find "$GITHUB_WORKSPACE/evoguard-static-snapshot/.github/workflows" -type f \
               \( -name '*.yml' -o -name '*.yaml' \) -print0 | sort -z
           )
           ((${#files[@]} > 0)) || {
@@ -165,11 +165,12 @@ jobs:
             exit 1
           }
           for file in "${files[@]}"; do
+            relative="${file#"$GITHUB_WORKSPACE/evoguard-static-snapshot/"}"
             docker run --rm --network none --read-only --cap-drop ALL \
               --security-opt no-new-privileges --pids-limit 128 \
               --memory 512m --cpus 1.0 \
               --tmpfs /tmp:rw,nosuid,nodev,size=64m \
-              -i "$ACTIONLINT_IMAGE" - < "$file"
+              -i "$ACTIONLINT_IMAGE" -stdin-filename "$relative" - < "$file"
           done
 
       - name: Run pinned zizmor offline against candidate bytes
