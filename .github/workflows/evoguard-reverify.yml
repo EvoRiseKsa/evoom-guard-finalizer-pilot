@@ -20,15 +20,18 @@ on:
         required: true
         type: string
 
-permissions:
-  checks: write
-  contents: read
-  pull-requests: read
+# No candidate job inherits a workflow-wide token. The metadata job is the
+# only job that may create the pending finalizer Check Run.
+permissions: {}
 
 jobs:
   metadata:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      checks: write
+      contents: read
+      pull-requests: read
     outputs:
       base_sha: ${{ steps.pr.outputs.base_sha }}
       head_sha: ${{ steps.pr.outputs.head_sha }}

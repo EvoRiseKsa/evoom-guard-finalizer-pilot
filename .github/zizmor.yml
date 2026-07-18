@@ -1,0 +1,16 @@
+# Trusted baseline for the base-owned static Actions audit. This file is both
+# Code Owner-routed and finalizer-protected; candidate copies never configure
+# the audit (the workflow fetches this exact base revision separately).
+#
+# zizmor correctly treats workflow_run and pull_request_target as high-risk in
+# general. Each exception is deliberately line-specific. EvoGuard Seal accepts
+# only the configured workflow ID, re-derives raw-Git bindings, never checks
+# out a PR head, and reaches its Environment key only after those checks. The
+# static audit runs base-owned with read-only permissions and materializes only
+# bounded Git blobs; it never checks out or executes a PR. Any movement of a
+# trigger line re-opens the finding for review.
+rules:
+  dangerous-triggers:
+    ignore:
+      - evoguard-seal.yml:8
+      - evoguard-static-security.yml:10

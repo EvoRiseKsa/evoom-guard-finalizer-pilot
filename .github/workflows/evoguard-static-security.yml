@@ -1,0 +1,196 @@
+# Base-owned static audit for workflow and local-action configuration.
+#
+# This workflow deliberately uses pull_request_target so its implementation
+# comes from the protected base. It never checks out the candidate, never
+# executes candidate code, has no Environment, and has only read-only API
+# permissions. Candidate bytes are fetched as bounded Git blobs and mounted
+# read-only into the analyzers.
+name: EvoGuard Static Workflow Security
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - ".github/CODEOWNERS"
+      - ".github/zizmor.yml"
+      - ".evoguard.json"
+      - "security/evoguard-pack/**"
+      - "security/finalizer-public.pem"
+      - "POLICY_MAINTENANCE.md"
+
+permissions: {}
+
+jobs:
+  static-security:
+    # Forks do not receive this privileged-base workflow. Same-repository PRs
+    # are the only supported finalizer candidates in this pilot.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch
+    name: Lint candidate workflow configuration as data
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - id: snapshot
+        name: Fetch bounded candidate configuration without a checkout
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          retries: 3
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const raw = process.env.PR_NUMBER || '';
+            if (!/^[1-9][0-9]*$/.test(raw)) {
+              throw new Error('pull_request_target did not supply a positive PR number');
+            }
+
+            const { owner, repo } = context.repo;
+            const defaultBranch = context.payload.repository.default_branch;
+            if (context.ref !== `refs/heads/${defaultBranch}`) {
+              throw new Error('static audit must execute from the default branch');
+            }
+
+            const pr = (await github.rest.pulls.get({
+              owner, repo, pull_number: Number(raw),
+            })).data;
+            if (pr.state !== 'open' ||
+                pr.base.ref !== defaultBranch ||
+                !pr.head.repo || pr.head.repo.full_name !== `${owner}/${repo}`) {
+              throw new Error('static audit accepts open same-repository PRs to the default branch only');
+            }
+            if (!/^[0-9a-f]{40,64}$/.test(pr.head.sha)) {
+              throw new Error('GitHub API returned an invalid candidate head SHA');
+            }
+
+            const head = await github.rest.git.getCommit({
+              owner, repo, commit_sha: pr.head.sha,
+            });
+            const tree = await github.rest.git.getTree({
+              owner, repo, tree_sha: head.data.tree.sha, recursive: '1',
+            });
+            if (tree.data.truncated) {
+              throw new Error('candidate Git tree is truncated; refusing an incomplete static audit');
+            }
+
+            const allowed = (entry) => {
+              if (entry.type !== 'blob' || entry.mode !== '100644') return false;
+              return /^(?:\.github\/workflows\/[^/]+\.ya?ml|\.github\/actions\/.+\/action\.ya?ml|\.github\/zizmor\.ya?ml)$/.test(entry.path);
+            };
+            const entries = tree.data.tree.filter(allowed);
+            if (entries.length === 0 || entries.length > 64) {
+              throw new Error(`candidate static input count must be 1..64, got ${entries.length}`);
+            }
+
+            const workspace = path.resolve(process.env.GITHUB_WORKSPACE || '');
+            if (workspace.length < 2) {
+              throw new Error('GITHUB_WORKSPACE is unavailable');
+            }
+            const snapshotRoot = path.join(workspace, 'evoguard-static-snapshot');
+            fs.rmSync(snapshotRoot, { recursive: true, force: true });
+            fs.mkdirSync(snapshotRoot, { recursive: true, mode: 0o755 });
+
+            let totalBytes = 0;
+            for (const entry of entries) {
+              const blob = await github.rest.git.getBlob({
+                owner, repo, file_sha: entry.sha,
+              });
+              if (blob.data.encoding !== 'base64' || typeof blob.data.content !== 'string') {
+                throw new Error(`candidate blob ${entry.path} is not base64 data`);
+              }
+              const bytes = Buffer.from(blob.data.content, 'base64');
+              if (bytes.length > 512 * 1024 || totalBytes + bytes.length > 2 * 1024 * 1024) {
+                throw new Error('candidate static inputs exceed the 2 MiB bounded-audit budget');
+              }
+              if (/#\s*zizmor\s*:\s*ignore\b/i.test(bytes.toString('utf8'))) {
+                throw new Error(`candidate blob ${entry.path} contains a zizmor inline-ignore directive`);
+              }
+              totalBytes += bytes.length;
+              const target = path.join(snapshotRoot, ...entry.path.split('/'));
+              if (!target.startsWith(`${snapshotRoot}${path.sep}`)) {
+                throw new Error(`candidate path escapes the audit root: ${entry.path}`);
+              }
+              fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o755 });
+              fs.writeFileSync(target, bytes, { mode: 0o644 });
+            }
+
+            // Never allow a candidate-supplied zizmor policy to weaken this
+            // audit. Fetch the protected base policy at the workflow's SHA.
+            const trusted = await github.rest.repos.getContent({
+              owner, repo, path: '.github/zizmor.yml', ref: context.sha,
+            });
+            if (Array.isArray(trusted.data) ||
+                trusted.data.type !== 'file' ||
+                trusted.data.encoding !== 'base64' ||
+                typeof trusted.data.content !== 'string') {
+              throw new Error('protected base zizmor policy is unavailable');
+            }
+            const policyBytes = Buffer.from(trusted.data.content, 'base64');
+            if (policyBytes.length === 0 || policyBytes.length > 64 * 1024) {
+              throw new Error('protected base zizmor policy has an invalid size');
+            }
+            fs.writeFileSync(path.join(workspace, 'trusted-zizmor.yml'), policyBytes, { mode: 0o644 });
+            core.notice(`Static audit loaded ${entries.length} candidate blobs (${totalBytes} bytes) from ${pr.head.sha}.`);
+
+      - name: Pull pinned actionlint image
+        env:
+          ACTIONLINT_IMAGE: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+        run: |
+          set -euo pipefail
+          docker pull "$ACTIONLINT_IMAGE"
+
+      - name: Parse every candidate workflow and local action
+        env:
+          ACTIONLINT_IMAGE: rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+        run: |
+          set -euo pipefail
+          stop_token="$(uuidgen)"
+          stop_commands() { echo "::stop-commands::$stop_token"; }
+          resume_commands() { echo "::$stop_token::"; }
+          stop_commands
+          trap resume_commands EXIT
+          mapfile -d '' files < <(
+            find "$GITHUB_WORKSPACE/evoguard-static-snapshot/.github" -type f \
+              \( -name '*.yml' -o -name '*.yaml' \) -print0 | sort -z
+          )
+          ((${#files[@]} > 0)) || {
+            echo "No candidate workflow inputs were fetched." >&2
+            exit 1
+          }
+          for file in "${files[@]}"; do
+            docker run --rm --network none --read-only --cap-drop ALL \
+              --security-opt no-new-privileges --pids-limit 128 \
+              --memory 512m --cpus 1.0 \
+              --tmpfs /tmp:rw,nosuid,nodev,size=64m \
+              -i "$ACTIONLINT_IMAGE" - < "$file"
+          done
+
+      - name: Run pinned zizmor offline against candidate bytes
+        env:
+          ZIZMOR_IMAGE: ghcr.io/zizmorcore/zizmor:1.27.0@sha256:5800c8d5e83263d68a8874989b0eb3939e177540e9395de48158d24656141ee9
+        run: |
+          set -euo pipefail
+          stop_token="$(uuidgen)"
+          stop_commands() { echo "::stop-commands::$stop_token"; }
+          resume_commands() { echo "::$stop_token::"; }
+          stop_commands
+          trap resume_commands EXIT
+          docker pull "$ZIZMOR_IMAGE"
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --pids-limit 128 \
+            --memory 512m --cpus 1.0 \
+            --tmpfs /tmp:rw,nosuid,nodev,size=64m \
+            --env HOME=/tmp \
+            --volume "$GITHUB_WORKSPACE:/workspace:ro" \
+            --workdir /workspace \
+            "$ZIZMOR_IMAGE" \
+            --offline --strict-collection --persona regular \
+            --config trusted-zizmor.yml --collect=all \
+            evoguard-static-snapshot/.github

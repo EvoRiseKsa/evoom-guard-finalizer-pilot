@@ -10,11 +10,9 @@ on:
     workflows: ["EvoGuard Reverify"]
     types: [completed]
 
-permissions:
-  actions: read
-  checks: write
-  contents: read
-  pull-requests: read
+# The key-bearing seal job declares its own narrow token. No unrelated job
+# inherits those capabilities merely by being added to this workflow later.
+permissions: {}
 
 jobs:
   # A failed/cancelled run, a bootstrap run with no configured workflow ID, or
@@ -116,6 +114,11 @@ jobs:
       format('{0}', github.event.workflow_run.workflow_id) == vars.EVOGUARD_REVERIFY_WORKFLOW_ID
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: read
     # Configure this environment with required reviewers and put the key only
     # in its EVOGUARD_FINALIZER_KEY secret. Do not use a generic repo secret.
     environment: evoguard-finalizer
@@ -341,9 +344,13 @@ jobs:
           BASE_TREE_SHA: ${{ steps.derive.outputs.base_tree_sha }}
           HEAD_TREE_SHA: ${{ steps.derive.outputs.head_tree_sha }}
           GUARD_ARTIFACT_SHA256: ${{ vars.EVOGUARD_GUARD_ARTIFACT_SHA256 }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
           set -euo pipefail
           test -n "$GITHUB_TOKEN"
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
           objects="$RUNNER_TEMP/evoguard-finalizer-objects.git"
           git init --bare --quiet "$objects"
           git -C "$objects" remote add origin "https://github.com/$REPOSITORY.git"
@@ -363,8 +370,8 @@ jobs:
             --repository "$REPOSITORY" \
             --repository-id "$REPOSITORY_ID" \
             --pr-number "$PR_NUMBER" \
-            --run-id "${{ github.event.workflow_run.id }}" \
-            --run-attempt "${{ github.event.workflow_run.run_attempt }}" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
             --guard-artifact-sha "$GUARD_ARTIFACT_SHA256" \
             --out "$RUNNER_TEMP/derived-bindings.json"
           python -I "$RUNNER_TEMP/evo-guard.pyz" verify-finalizer-bindings \
