@@ -41,15 +41,21 @@ source-only candidate. It does not establish a hostile-runner boundary,
 general software correctness, OCI/release/deployment provenance, SBOM coverage,
 or a production service assurance level.
 
-## Prepared provider probe
+## Completed provider probe
 
-The repository contains a prepared-but-not-yet-executed
-[`ARTIFACT_ATTESTATION_PROBE.md`](ARTIFACT_ATTESTATION_PROBE.md) design for one
-GitHub Artifact Attestation provider probe. It has no finalizer/admission key,
-Environment, release, deployment, or merge-gate effect. A future successful
-probe run may establish only that GitHub generated and re-verified provenance
-for its own non-executable probe file under a bounded identity policy; it does
-not change the limits above or close the artifact-admission work.
+The first GitHub Artifact Attestation provider probe completed successfully on
+2026-07-18. Its exact run, subject checksum, attestation identity, retained
+artifact expiry, independent local re-verification, and negative tests are
+recorded in [`PROVIDER_PROBE_RESULTS.md`](PROVIDER_PROBE_RESULTS.md). It has no
+finalizer/admission key, protected admission Environment, release,
+deployment, or merge-gate effect.
+
+GitHub did create an ordinary Actions check run named `probe` for that
+workflow. It neither creates, satisfies, nor influences the required
+`EvoGuard Trusted Finalizer` check or a merge decision. The completed probe
+establishes only that GitHub generated and re-verified provenance for its own
+non-executable probe file under a bounded identity policy; it does not change
+the limits above or close the artifact-admission work.
 
 ## Planned closure
 
