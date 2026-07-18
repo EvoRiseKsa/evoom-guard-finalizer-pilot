@@ -1,8 +1,9 @@
 # GitHub Artifact Attestation provider probe
 
-> **Prepared, not yet executed.** This document describes a controlled
-> provider experiment. Until a successful run is retained and independently
-> inspected, it is not evidence that the pilot has artifact-bound admission.
+> **Executed once, provider capability only.** The first successful run is
+> recorded in [`PROVIDER_PROBE_RESULTS.md`](PROVIDER_PROBE_RESULTS.md). It is
+> evidence about GitHub's provider behavior, not evidence that the pilot has
+> artifact-bound admission.
 
 ## Purpose
 
@@ -25,8 +26,10 @@ The subject is a non-executable, run-specific text file containing only:
 - the fixed `provider-verification-only` purpose.
 
 It does not run a candidate, build the pilot CLI, publish a release, use an
-Environment, read a secret, issue a finalizer decision, create a V2 admission
-record, or create a merge status check.
+Environment, read a secret, issue a finalizer decision, or create a V2
+admission record. GitHub Actions does create an ordinary `probe` check run;
+that check does not create, satisfy, or influence the required `EvoGuard
+Trusted Finalizer` check or a merge decision.
 
 ## Provider constraints actually enforced
 
@@ -57,7 +60,7 @@ predicate data can be controlled by the originating workflow. Successful
 provider verification, with the listed identity flags, is the relevant
 cryptographic observation.
 
-## How to run it after the maintenance PR is merged
+## How the first run was made, and how to repeat a provider-only observation
 
 1. Confirm the PR was merged using the trust-root procedure in
    [`POLICY_MAINTENANCE.md`](POLICY_MAINTENANCE.md), including restored branch
@@ -66,7 +69,8 @@ cryptographic observation.
 2. Open **Actions** → **EvoGuard GitHub Artifact Attestation Provider Probe**.
 3. Choose `main` and select **Run workflow**. Do not choose a tag or PR branch.
 4. Wait for the one `probe` job. A pass means only that GitHub generated and
-   then re-verified an attestation under the exact constraints above.
+   then re-verified an attestation under the exact constraints above. It will
+   create an ordinary Actions check run, not the required finalizer check.
 5. Download the retained probe artifact before its seven-day expiry. Verify the
    two SHA-256 files locally and rerun `gh attestation verify` against the
    downloaded probe subject with the recorded repository, signer workflow,

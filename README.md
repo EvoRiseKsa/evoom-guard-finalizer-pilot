@@ -46,11 +46,13 @@ merge-enforcement validation.
 ## GitHub Artifact Attestation provider probe
 
 [`ARTIFACT_ATTESTATION_PROBE.md`](ARTIFACT_ATTESTATION_PROBE.md) defines a
-separate, manually dispatched provider experiment. Once its narrowly scoped
-Code Owner-governed maintenance PR is reviewed and merged, it may attest and re-verify
-one non-executable file constructed from protected default-branch metadata. It is
-not a finalizer, artifact-admission, release, deployment, or merge gate, and
-no successful run may be described as any of those things.
+separate, manually dispatched provider experiment. Its first run completed on
+2026-07-18 and is recorded in
+[`PROVIDER_PROBE_RESULTS.md`](PROVIDER_PROBE_RESULTS.md). It attested and
+re-verified one non-executable file constructed from protected default-branch
+metadata. It is not a finalizer, artifact-admission, release, deployment, or
+merge gate, and the successful run must not be described as any of those
+things.
 
 ## Security boundary
 
