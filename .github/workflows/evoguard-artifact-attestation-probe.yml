@@ -1,0 +1,272 @@
+# GitHub Artifact Attestation provider probe for the controlled pilot.
+#
+# This is deliberately not a finalizer, artifact-admission, release, or
+# deployment workflow.  It creates one non-executable, deterministic probe
+# subject from reviewed default-branch metadata, asks GitHub to attest it, then
+# verifies the provider result under a bounded identity policy.  It has no
+# secrets, no Environment, no candidate checkout, no finalizer/admission key,
+# and creates no status check or merge decision.
+name: EvoGuard GitHub Artifact Attestation Provider Probe
+run-name: "EvoGuard Artifact Attestation Provider Probe @ ${{ github.sha }}"
+
+on:
+  workflow_dispatch:
+
+# Do not grant a repository-wide default token.  The one job below gets only
+# the minimal permissions GitHub documents for generating an attestation.
+permissions: {}
+
+concurrency:
+  # Preserve every manual probe run as separate, inspectable provider evidence.
+  group: evoguard-artifact-attestation-probe-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    # A manually chosen ref is not an authority.  The reviewed workflow must
+    # execute from the protected default branch, never a PR branch or tag.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    env:
+      # `gh attestation verify` uses this read-capable job token to retrieve
+      # the just-created public attestation.  Its only write permission is
+      # GitHub's dedicated attestation endpoint; the job has no content,
+      # package, check, issue, or secret write access.
+      GH_TOKEN: ${{ github.token }}
+      # Pass event metadata through the environment and quote it in Bash.  Do
+      # not interpolate repository metadata directly into a shell program.
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+    steps:
+      - name: Construct a bounded non-executable probe subject
+        id: subject
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$DEFAULT_BRANCH" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]]
+          [[ "$DEFAULT_BRANCH" != *..* ]]
+          [[ "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH" ]]
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          subject="$RUNNER_TEMP/evoguard-attestation-provider-probe.txt"
+          umask 077
+          {
+            printf '%s\n' 'EVOGUARD_GITHUB_ARTIFACT_ATTESTATION_PROVIDER_PROBE_V1'
+            printf 'repository=%s\n' "$GITHUB_REPOSITORY"
+            printf 'run_attempt=%s\n' "$GITHUB_RUN_ATTEMPT"
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'source_ref=%s\n' "$GITHUB_REF"
+            printf 'source_digest=%s\n' "$GITHUB_SHA"
+            printf '%s\n' 'purpose=provider-verification-only'
+          } > "$subject"
+          test -f "$subject"
+          test ! -L "$subject"
+          test "$(stat --format=%s "$subject")" -gt 0
+          test "$(stat --format=%s "$subject")" -le 4096
+          sha256sum "$subject" > "$RUNNER_TEMP/evoguard-attestation-provider-probe.sha256"
+          printf 'path=%s\n' "$subject" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub provenance for the exact probe bytes
+        id: attest
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: ${{ steps.subject.outputs.path }}
+
+      - name: Capture provider object identity and verifier capability
+        id: provider
+        shell: bash
+        env:
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          [[ "$ATTESTATION_ID" =~ ^[1-9][0-9]*$ ]]
+          expected_url="https://github.com/$GITHUB_REPOSITORY/attestations/$ATTESTATION_ID"
+          test "$ATTESTATION_URL" = "$expected_url"
+          test -f "$BUNDLE_PATH"
+          test ! -L "$BUNDLE_PATH"
+          test "$(stat --format=%s "$BUNDLE_PATH")" -gt 1
+          test "$(stat --format=%s "$BUNDLE_PATH")" -le 8388608
+          bundle_sha256="$(sha256sum "$BUNDLE_PATH" | awk '{print $1}')"
+          gh_version="$(gh --version | awk 'NR == 1 { print $3 }')"
+          [[ "$gh_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          help="$(gh attestation verify --help)"
+          for flag in \
+            --repo --signer-workflow --signer-digest --source-ref --source-digest \
+            --predicate-type --cert-oidc-issuer --deny-self-hosted-runners --limit --format; do
+            grep -Fq -- "$flag" <<<"$help" || {
+              echo "required gh attestation verify flag unavailable: $flag" >&2
+              exit 1
+            }
+          done
+          printf 'attestation_id=%s\n' "$ATTESTATION_ID" >> "$GITHUB_OUTPUT"
+          printf 'attestation_url=%s\n' "$ATTESTATION_URL" >> "$GITHUB_OUTPUT"
+          printf 'bundle_sha256=%s\n' "$bundle_sha256" >> "$GITHUB_OUTPUT"
+          printf 'bundle_size=%s\n' "$(stat --format=%s "$BUNDLE_PATH")" >> "$GITHUB_OUTPUT"
+          printf 'gh_version=%s\n' "$gh_version" >> "$GITHUB_OUTPUT"
+
+      - name: Re-verify GitHub provenance with bounded exact policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          subject="$RUNNER_TEMP/evoguard-attestation-provider-probe.txt"
+          result="$RUNNER_TEMP/github-attestation-verify.json"
+          stderr="$RUNNER_TEMP/github-attestation-verify.stderr"
+          signer_workflow="$GITHUB_REPOSITORY/.github/workflows/evoguard-artifact-attestation-probe.yml"
+          max_output_bytes=8388608
+          max_file_blocks=$((max_output_bytes / 512))
+
+          # Attestation publication can lag the action that creates it.  Retry
+          # only that transient provider-read boundary; every attempt enforces
+          # the same repository, workflow, source ref/digest, predicate, OIDC,
+          # hosted-runner, and one-result constraints.
+          for attempt in 1 2 3; do
+            if (
+              ulimit -f "$max_file_blocks"
+              exec gh attestation verify "$subject" \
+                --repo "$GITHUB_REPOSITORY" \
+                --signer-workflow "$signer_workflow" \
+                --source-ref "$GITHUB_REF" \
+                --source-digest "$GITHUB_SHA" \
+                --predicate-type 'https://slsa.dev/provenance/v1' \
+                --cert-oidc-issuer 'https://token.actions.githubusercontent.com' \
+                --deny-self-hosted-runners \
+                --limit 1 \
+                --format json > "$result" 2> "$stderr"
+            ); then
+              break
+            fi
+            if test "$attempt" = 3; then
+              test -f "$stderr" && test ! -L "$stderr" && head -c 65536 "$stderr" >&2 || true
+              echo 'GitHub Artifact Attestation provider verification did not succeed after three attempts.' >&2
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+
+          test -f "$result"
+          test ! -L "$result"
+          test "$(stat --format=%s "$result")" -gt 1
+          test "$(stat --format=%s "$result")" -le "$max_output_bytes"
+          test -f "$stderr"
+          test ! -L "$stderr"
+          test "$(stat --format=%s "$stderr")" -le "$max_output_bytes"
+          expected="$(awk '{print $1}' "$RUNNER_TEMP/evoguard-attestation-provider-probe.sha256")"
+          actual="$(sha256sum "$subject" | awk '{print $1}')"
+          test "$actual" = "$expected"
+
+      - name: Record bounded provider-observation receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - \
+            "$RUNNER_TEMP/evoguard-attestation-provider-probe.txt" \
+            "$RUNNER_TEMP/evoguard-attestation-provider-probe.sha256" \
+            "$RUNNER_TEMP/github-attestation-verify.json" \
+            "$RUNNER_TEMP/evoguard-attestation-provider-probe-receipt.json" <<'PY'
+          import hashlib
+          import json
+          import os
+          import stat
+          import sys
+
+          subject_path, checksum_path, result_path, receipt_path = sys.argv[1:]
+
+          def regular(path: str, maximum: int) -> os.stat_result:
+              info = os.lstat(path)
+              if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                  raise SystemExit(f"expected regular file: {path}")
+              if info.st_size <= 0 or info.st_size > maximum:
+                  raise SystemExit(f"expected bounded file: {path}")
+              return info
+
+          def digest(path: str, maximum: int) -> tuple[str, int]:
+              before = regular(path, maximum)
+              hasher = hashlib.sha256()
+              with open(path, "rb", buffering=0) as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      hasher.update(chunk)
+              after = regular(path, maximum)
+              if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+                  after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns
+              ):
+                  raise SystemExit(f"file changed while hashing: {path}")
+              return hasher.hexdigest(), after.st_size
+
+          subject_sha256, subject_size = digest(subject_path, 4096)
+          checksum = open(checksum_path, encoding="utf-8").read().split()
+          if len(checksum) != 2 or checksum[0] != subject_sha256:
+              raise SystemExit("probe subject checksum changed")
+          result_sha256, _ = digest(result_path, 8388608)
+          result = json.loads(open(result_path, "rb").read())
+          if not isinstance(result, list) or len(result) != 1 or not isinstance(result[0], dict):
+              raise SystemExit("provider did not return exactly one verified result")
+
+          receipt = {
+              "format": "EVOGUARD_GITHUB_ARTIFACT_ATTESTATION_PROVIDER_PROBE_V1",
+              "probe": {
+                  "repository": os.environ["GITHUB_REPOSITORY"],
+                  "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+                  "run_id": int(os.environ["GITHUB_RUN_ID"]),
+                  "signer_workflow": (
+                      f"{os.environ['GITHUB_REPOSITORY']}/"
+                      ".github/workflows/evoguard-artifact-attestation-probe.yml"
+                  ),
+                  "source_digest": os.environ["GITHUB_SHA"],
+                  "source_ref": os.environ["GITHUB_REF"],
+              },
+              "subject": {
+                  "kind": "regular-file-sha256",
+                  "sha256": subject_sha256,
+                  "size": subject_size,
+              },
+              "verification": {
+                  "attestation_limit": 1,
+                  "attestation_bundle_sha256": os.environ["ATTESTATION_BUNDLE_SHA256"],
+                  "attestation_bundle_size": int(os.environ["ATTESTATION_BUNDLE_SIZE"]),
+                  "attestation_id": int(os.environ["ATTESTATION_ID"]),
+                  "attestation_url": os.environ["ATTESTATION_URL"],
+                  "cert_oidc_issuer": "https://token.actions.githubusercontent.com",
+                  "deny_self_hosted_runners": True,
+                  "gh_version": os.environ["GH_VERSION"],
+                  "predicate_type": "https://slsa.dev/provenance/v1",
+                  "provider": "github-artifact-attestation",
+                  "verification_output_sha256": result_sha256,
+                  "selected_verification_count": len(result),
+              },
+          }
+          with open(receipt_path, "x", encoding="utf-8", newline="\n") as handle:
+              json.dump(receipt, handle, sort_keys=True, separators=(",", ":"))
+              handle.write("\n")
+          PY
+          sha256sum "$RUNNER_TEMP/evoguard-attestation-provider-probe-receipt.json" \
+            > "$RUNNER_TEMP/evoguard-attestation-provider-probe-receipt.sha256"
+        env:
+          ATTESTATION_BUNDLE_SHA256: ${{ steps.provider.outputs.bundle_sha256 }}
+          ATTESTATION_BUNDLE_SIZE: ${{ steps.provider.outputs.bundle_size }}
+          ATTESTATION_ID: ${{ steps.provider.outputs.attestation_id }}
+          ATTESTATION_URL: ${{ steps.provider.outputs.attestation_url }}
+          GH_VERSION: ${{ steps.provider.outputs.gh_version }}
+
+      - name: Retain the non-secret probe inputs and bounded observation
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evoguard-github-attestation-provider-probe-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/evoguard-attestation-provider-probe.txt
+            ${{ runner.temp }}/evoguard-attestation-provider-probe.sha256
+            ${{ runner.temp }}/evoguard-attestation-provider-probe-receipt.json
+            ${{ runner.temp }}/evoguard-attestation-provider-probe-receipt.sha256
+            ${{ runner.temp }}/github-attestation-verify.json
+          if-no-files-found: warn
+          overwrite: false
+          retention-days: 7

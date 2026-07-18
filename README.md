@@ -43,6 +43,15 @@ fresh Git/API-derived context. It is still a controlled same-owner operational
 exercise, not independent review, broad efficacy evidence, or production
 merge-enforcement validation.
 
+## GitHub Artifact Attestation provider probe
+
+[`ARTIFACT_ATTESTATION_PROBE.md`](ARTIFACT_ATTESTATION_PROBE.md) defines a
+separate, manually dispatched provider experiment. Once its narrowly scoped
+Code Owner-governed maintenance PR is reviewed and merged, it may attest and re-verify
+one non-executable file constructed from protected default-branch metadata. It is
+not a finalizer, artifact-admission, release, deployment, or merge gate, and
+no successful run may be described as any of those things.
+
 ## Security boundary
 
 `.evoguard.json`, `security/evoguard-pack/`, and `.github/workflows/` are

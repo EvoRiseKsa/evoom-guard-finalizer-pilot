@@ -41,6 +41,16 @@ source-only candidate. It does not establish a hostile-runner boundary,
 general software correctness, OCI/release/deployment provenance, SBOM coverage,
 or a production service assurance level.
 
+## Prepared provider probe
+
+The repository contains a prepared-but-not-yet-executed
+[`ARTIFACT_ATTESTATION_PROBE.md`](ARTIFACT_ATTESTATION_PROBE.md) design for one
+GitHub Artifact Attestation provider probe. It has no finalizer/admission key,
+Environment, release, deployment, or merge-gate effect. A future successful
+probe run may establish only that GitHub generated and re-verified provenance
+for its own non-executable probe file under a bounded identity policy; it does
+not change the limits above or close the artifact-admission work.
+
 ## Planned closure
 
 Keep this repository public while it serves as inspectable controlled evidence.
