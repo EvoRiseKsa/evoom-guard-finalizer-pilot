@@ -13,8 +13,10 @@ repository or Environment secret, upload SARIF, or receive write permissions.
 
 Instead, the base-owned `github-script` step asks GitHub's Git API for the
 exact current PR-head tree and writes only bounded workflow and local-action
-YAML blobs into a disposable snapshot. Symlinks, a truncated tree, more than
-64 inputs, a blob over 512 KiB, or more than 2 MiB total fail closed.
+YAML blobs into a disposable snapshot. Regular Git blobs with modes `100644`
+and `100755` are scanned; symlinks, submodules, other in-scope object types, a
+truncated tree, more than 64 inputs, a blob over 512 KiB, or more than 2 MiB
+total fail closed.
 `actionlint` receives only candidate workflow files because it validates
 workflow syntax; `zizmor` receives the read-only snapshot and collects both
 workflows and composite actions. Their containers have no network or Linux
@@ -28,6 +30,19 @@ passes it explicitly, so a candidate cannot disable an audit by editing its
 own config. It also rejects a candidate workflow that contains a zizmor
 inline-ignore directive. The workflow therefore does not rely on a
 candidate-supplied suppression rule.
+
+### Trust-root maintenance limitation
+
+GitHub resolves a `pull_request_target` workflow from the base revision. A
+pull request that changes this audit is therefore inspected by the preceding
+base-owned implementation, not by its proposed implementation. That is
+intentional: allowing the candidate implementation to audit itself would
+destroy the boundary above. A passing or failing pre-merge static-audit result
+must not be presented as validation of a proposed change to this workflow.
+Such a change is trust-root maintenance: it needs the declared policy-version
+update, technical review, the separate finalizer record, and a post-merge
+exercise against a new unmerged candidate before the new implementation is
+treated as exercised.
 
 ## Pinned analysis inputs
 

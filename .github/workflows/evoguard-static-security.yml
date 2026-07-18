@@ -80,13 +80,19 @@ jobs:
               throw new Error('candidate Git tree is truncated; refusing an incomplete static audit');
             }
 
-            const allowed = (entry) => {
-              if (entry.type !== 'blob' || entry.mode !== '100644') return false;
-              return /^(?:\.github\/workflows\/[^/]+\.ya?ml|\.github\/actions\/.+\/action\.ya?ml)$/.test(entry.path);
-            };
-            const entries = tree.data.tree.filter(allowed);
+            const inScope = (entry) =>
+              /^(?:\.github\/workflows\/[^/]+\.ya?ml|\.github\/actions\/.+\/action\.ya?ml)$/.test(entry.path);
+            const entries = tree.data.tree.filter(inScope);
             if (entries.length === 0 || entries.length > 64) {
               throw new Error(`candidate static input count must be 1..64, got ${entries.length}`);
+            }
+            for (const entry of entries) {
+              // GitHub may execute a workflow or local action whose regular
+              // file mode is 100755. Scan both regular modes, but fail closed
+              // on symlinks, submodules, or any other in-scope object.
+              if (entry.type !== 'blob' || !['100644', '100755'].includes(entry.mode)) {
+                throw new Error(`candidate static input ${entry.path} is not a regular Git blob`);
+              }
             }
 
             const workspace = path.resolve(process.env.GITHUB_WORKSPACE || '');
@@ -193,5 +199,6 @@ jobs:
             --workdir /workspace \
             "$ZIZMOR_IMAGE" \
             --offline --strict-collection --persona regular \
-            --config trusted-zizmor.yml --collect=all \
+            --config trusted-zizmor.yml \
+            --collect workflows --collect actions \
             evoguard-static-snapshot/.github
