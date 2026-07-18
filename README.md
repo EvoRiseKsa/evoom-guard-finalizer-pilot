@@ -58,10 +58,13 @@ things.
 
 [PR_HEAD_ATTESTATION_PILOT.md](PR_HEAD_ATTESTATION_PILOT.md) defines a separate
 staged experiment for the unresolved distinction between a finalizer-allowed
-pull-request head H and a later merged revision M. This first maintenance phase
-adds only a dormant reusable builder. It has no caller and therefore creates no
-run. It is not artifact admission, V2 admission, a release or deployment
-control, or a merge gate.
+pull-request head H and a later merged revision M. The first maintenance phase
+installed a dormant reusable builder; the second adds a no-secret caller pinned
+to that builder's immutable maintenance-merge SHA. The caller triggers only on
+one exact temporary source branch, which has not yet been pushed. The initial
+branch push may be rejected before an open PR exists; only a later source-only
+head pushed after the PR opens can become evidence. This is not artifact
+admission, V2 admission, a release or deployment control, or a merge gate.
 
 ## Security boundary
 

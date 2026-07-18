@@ -1,0 +1,38 @@
+# Protected caller for the one PR-head attestation experiment.
+#
+# GitHub loads a push workflow from the pushed candidate revision. The reviewed
+# default-branch caller declares no repository or Environment secrets, targets
+# no Environment, and has no admission, release, deployment, check, or merge
+# authority. Its only job calls the reviewed reusable builder at the immutable
+# PR-A maintenance merge below. A candidate may alter its own copy of this
+# file, including its call, so any result from that copy is non-authoritative
+# unless external verification proves the reviewed builder signer identity.
+name: EvoGuard PR-head Attestation Caller
+run-name: "EvoGuard PR-head attestation candidate @ ${{ github.sha }}"
+
+on:
+  push:
+    branches:
+      - evoguard/pr-head-attestation-pilot/round1
+
+# Do not grant repository-wide permissions.  The reusable-workflow call below
+# receives only the minimum token scopes required by the fixed builder; no
+# caller inputs or secret inheritance are declared.
+permissions: {}
+
+jobs:
+  call_pinned_builder:
+    # Repeat the one-off repository/event/ref contract before dispatching the
+    # external immutable builder.  This is defense in depth; the builder
+    # independently repeats and verifies the same binding against GitHub API
+    # responses before constructing its non-executable attestation subject.
+    if: >-
+      github.repository == 'EvoRiseKsa/evoom-guard-finalizer-pilot' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/evoguard/pr-head-attestation-pilot/round1'
+    uses: EvoRiseKsa/evoom-guard-finalizer-pilot/.github/workflows/evoguard-pr-head-attest-builder.yml@cd6175d7dadb968339090545060d441d181363d5
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      pull-requests: read
