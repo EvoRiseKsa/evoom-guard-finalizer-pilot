@@ -199,6 +199,6 @@ jobs:
             --workdir /workspace \
             "$ZIZMOR_IMAGE" \
             --offline --strict-collection --persona regular \
-            --config trusted-zizmor.yml \
             --collect workflows --collect actions \
+            --config trusted-zizmor.yml \
             evoguard-static-snapshot/.github
