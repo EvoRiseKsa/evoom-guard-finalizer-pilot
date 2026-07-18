@@ -35,6 +35,15 @@ silently present it as the prior policy. Its staged method and explicit
 non-claims are in
 [PR_HEAD_ATTESTATION_PILOT.md](PR_HEAD_ATTESTATION_PILOT.md).
 
+The base-owned static workflow-security audit and its zizmor policy are also
+protected inputs. They do not issue a verdict, use an Environment, or execute
+candidate code, but they decide which static configuration findings are
+reported. The audit must fetch its policy from the protected base rather than
+honoring a candidate-owned copy. Its exact boundary, pins, and one reviewed
+line-specific exception are documented in
+[`STATIC_SECURITY_LINT.md`](STATIC_SECURITY_LINT.md). Changes to either file
+follow this maintenance procedure and increment the declared policy version.
+
 ## Required maintenance procedure
 
 1. Open a narrowly scoped pull request and identify it as a trust-root policy
@@ -61,6 +70,11 @@ non-claims are in
    approval → seal sequence. Verify the resulting signed bundle with the
    independently supplied public key and API-derived run/revision/tree context.
    Publish the outcome, including any denial or failure.
+7. If the maintenance change adds a base-owned static audit, create a separate
+   unmerged, comment-only protected-path PR after the base is restored. Confirm
+   that the audit reads the candidate only as Git blobs and that the finalizer
+   rejects the protected-harness edit. Do not treat a successful lint result as
+   a finalizer verdict.
 
 ## Non-goals and stop conditions
 

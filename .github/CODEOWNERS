@@ -7,6 +7,8 @@
 /.github/workflows/evoguard-artifact-attestation-probe.yml @MANA-awam
 /.github/workflows/evoguard-pr-head-attest-builder.yml @MANA-awam
 /.github/workflows/evoguard-pr-head-attest-caller.yml @MANA-awam
+/.github/workflows/evoguard-static-security.yml @MANA-awam
+/.github/zizmor.yml @MANA-awam
 /.evoguard.json @MANA-awam
 /security/evoguard-pack/ @MANA-awam
 /security/finalizer-public.pem @MANA-awam
