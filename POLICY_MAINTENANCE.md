@@ -12,6 +12,17 @@ Those files decide what is judged, who may seal evidence, and which Guard
 artifact is trusted. They therefore need a separate, explicit governance
 procedure rather than an implicit bypass of the normal candidate gate.
 
+The provider-probe workflow is **not** part of the finalizer trust root and the
+finalizer does not itself treat that path as a protected harness input. It is separately Code
+Owner-governed because its exact signer workflow path becomes part of the
+provider-verification observation. Changing `.github/CODEOWNERS` to add or
+alter that routing remains a finalizer-protected policy change, so the initial
+addition still follows this maintenance procedure. Its current purpose and
+non-claims are in
+[`ARTIFACT_ATTESTATION_PROBE.md`](ARTIFACT_ATTESTATION_PROBE.md). Do not broaden
+it into an admission, release, deployment, or status-check workflow without a
+new threat-model review.
+
 ## Required maintenance procedure
 
 1. Open a narrowly scoped pull request and identify it as a trust-root policy

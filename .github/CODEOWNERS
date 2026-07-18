@@ -4,6 +4,7 @@
 /.github/CODEOWNERS @MANA-awam
 /.github/workflows/evoguard-reverify.yml @MANA-awam
 /.github/workflows/evoguard-seal.yml @MANA-awam
+/.github/workflows/evoguard-artifact-attestation-probe.yml @MANA-awam
 /.evoguard.json @MANA-awam
 /security/evoguard-pack/ @MANA-awam
 /security/finalizer-public.pem @MANA-awam
