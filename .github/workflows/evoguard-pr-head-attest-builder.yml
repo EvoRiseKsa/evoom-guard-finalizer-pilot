@@ -290,11 +290,13 @@ jobs:
               exit 1
             }
           done
-          printf 'attestation_id=%s\n' "$ATTESTATION_ID" >> "$GITHUB_OUTPUT"
-          printf 'attestation_url=%s\n' "$ATTESTATION_URL" >> "$GITHUB_OUTPUT"
-          printf 'bundle_sha256=%s\n' "$bundle_sha256" >> "$GITHUB_OUTPUT"
-          printf 'bundle_size=%s\n' "$(stat --format=%s "$bundle_copy")" >> "$GITHUB_OUTPUT"
-          printf 'gh_version=%s\n' "$gh_version" >> "$GITHUB_OUTPUT"
+          {
+            printf 'attestation_id=%s\n' "$ATTESTATION_ID"
+            printf 'attestation_url=%s\n' "$ATTESTATION_URL"
+            printf 'bundle_sha256=%s\n' "$bundle_sha256"
+            printf 'bundle_size=%s\n' "$(stat --format=%s "$bundle_copy")"
+            printf 'gh_version=%s\n' "$gh_version"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Re-verify GitHub provenance with exact bounded policy
         shell: bash
