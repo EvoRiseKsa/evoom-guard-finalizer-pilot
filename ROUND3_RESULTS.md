@@ -40,6 +40,19 @@ A separate local `gh attestation verify` selected exactly one result and separat
 
 `evidence/round3/pr-head-attestation-binding.json` is the exact regular-file subject. The receipt is retained with its SHA-256 in the manifest so this GitHub attestation can be queried again after the short-lived Actions artifact expires.
 
+The original Actions artifact was set to expire on 2026-07-25. To prevent that
+temporary retention window from being the only source, this repository now
+also retains Base64 transports of its exact Sigstore bundle and the exact
+GitHub verification output:
+
+- `evidence/round3/evoguard-pr-head-attestation-bundle.jsonl.b64` decodes to
+  SHA-256 `57857436324991d249d185238488b5f8257418f9f115d2377218911fac4f17f5`.
+- `evidence/round3/github-pr-head-attestation-verify.json.b64` decodes to
+  SHA-256 `aa668c28cf6c1017f6ac7ec5c3d0c50b1710f7318870b4ac7a95dc8866ffc92f`.
+
+These stored bytes preserve the observed provider result but are not a new
+attestation, admission receipt, release claim, or independent assessment.
+
 ## Same-H Trusted Finalizer result
 
 A manual [EvoGuard Reverify run 29625694041](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29625694041), attempt 1, independently derived raw-Git bindings for the same B/H pair. Its no-secret reverify completed successfully. The separate [seal run 29625712528](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/actions/runs/29625712528) was approved through the protected `evoguard-finalizer` Environment by MANA-awam and completed successfully.

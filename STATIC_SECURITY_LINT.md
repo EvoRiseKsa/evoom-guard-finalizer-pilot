@@ -44,6 +44,11 @@ update, technical review, the separate finalizer record, and a post-merge
 exercise against a new unmerged candidate before the new implementation is
 treated as exercised.
 
+The v5 implementation was exercised by the deliberately unmerged PR #25.
+[`STATIC_WORKFLOW_V5_RESULTS.md`](STATIC_WORKFLOW_V5_RESULTS.md) preserves the
+base-owned static-audit observation and separately verified signed DENY. It is
+evidence of the boundary, not validation of PR #25 for merge.
+
 ## Pinned analysis inputs
 
 - Official `actionlint` OCI image `v1.7.12`, pinned to

@@ -4,3 +4,8 @@ evidence/round2/** text eol=lf
 
 # Keep Round 3 evidence checkout bytes stable; its manifest records digests.
 evidence/round3/** text eol=lf
+
+# Preserve the Base64 transport and manifest byte identity for the v5 static-workflow boundary record.
+evidence/static-workflow-v5-pr25/** text eol=lf
+# The raw unified diff intentionally retains blank context lines that begin with one space.
+evidence/static-workflow-v5-pr25/candidate.diff -whitespace
