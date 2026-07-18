@@ -54,6 +54,15 @@ metadata. It is not a finalizer, artifact-admission, release, deployment, or
 merge gate, and the successful run must not be described as any of those
 things.
 
+## PR-head provenance pilot
+
+[PR_HEAD_ATTESTATION_PILOT.md](PR_HEAD_ATTESTATION_PILOT.md) defines a separate
+staged experiment for the unresolved distinction between a finalizer-allowed
+pull-request head H and a later merged revision M. This first maintenance phase
+adds only a dormant reusable builder. It has no caller and therefore creates no
+run. It is not artifact admission, V2 admission, a release or deployment
+control, or a merge gate.
+
 ## Security boundary
 
 `.evoguard.json`, `security/evoguard-pack/`, and `.github/workflows/` are
