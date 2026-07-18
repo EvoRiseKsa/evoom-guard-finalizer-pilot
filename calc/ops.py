@@ -1,3 +1,3 @@
 def add(left: int, right: int) -> int:
-    """Return the deterministic mathematical sum of two integers."""
+    """Return the deterministic, side-effect-free sum of two integers."""
     return left + right
