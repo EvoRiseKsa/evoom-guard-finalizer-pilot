@@ -57,6 +57,19 @@ establishes only that GitHub generated and re-verified provenance for its own
 non-executable probe file under a bounded identity policy; it does not change
 the limits above or close the artifact-admission work.
 
+## Completed static-workflow v5 boundary exercise
+
+[`STATIC_WORKFLOW_V5_RESULTS.md`](STATIC_WORKFLOW_V5_RESULTS.md) records the
+separate post-merge exercise for the base-owned v5 static workflow audit. PR
+#25 remains draft, open, and intentionally unmerged. The static audit passed
+only as a data-only inspection; the signed finalizer correctly issued DENY for
+the protected workflow path. The retained bundle and public verification
+inputs make that distinction reproducible after Actions artifact expiry.
+
+[`PILOT_BASELINE.md`](PILOT_BASELINE.md) freezes this repository as a bounded
+evidence baseline. Artifact-admission work remains future, separate, and does
+not alter the v3.7.0 claim boundary.
+
 ## Planned closure
 
 Keep this repository public while it serves as inspectable controlled evidence.

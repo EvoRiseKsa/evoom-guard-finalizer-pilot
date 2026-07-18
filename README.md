@@ -66,6 +66,19 @@ branch push may be rejected before an open PR exists; only a later source-only
 head pushed after the PR opens can become evidence. This is not artifact
 admission, V2 admission, a release or deployment control, or a merge gate.
 
+## Static workflow v5 boundary record
+
+[`STATIC_WORKFLOW_V5_RESULTS.md`](STATIC_WORKFLOW_V5_RESULTS.md) records the
+post-merge v5 exercise against intentionally unmerged PR #25. The base-owned
+static audit successfully inspected candidate YAML as data, while the separate
+signed finalizer correctly returned DENY for the protected workflow edit. This
+is a bounded same-owner evidence record, not an approval of the candidate or
+an independent audit.
+
+[`PILOT_BASELINE.md`](PILOT_BASELINE.md) freezes the current pilot scope. New
+artifact-admission work belongs in a separate repository and does not change
+the capabilities of the published v3.7.0 asset.
+
 ## Security boundary
 
 `.evoguard.json`, `security/evoguard-pack/`, and `.github/workflows/` are
