@@ -1,0 +1,488 @@
+# Reusable PR-head provenance builder for one staged artifact-admission pilot.
+#
+# This workflow is deliberately dormant until a separate protected caller is
+# added. It declares no caller inputs or caller-supplied secrets. When called,
+# it uses only its constrained automatic GitHub token to create an attestation
+# for a regular file built from GitHub API-validated metadata. It never checks
+# out or executes candidate code. It is not a finalizer,
+# admission decision, release, deployment, or merge gate.
+name: EvoGuard PR-head Attestation Builder
+run-name: "EvoGuard PR-head attestation builder @ ${{ github.sha }}"
+
+on:
+  workflow_call:
+
+# No repository-wide token permissions. The sole job receives only the
+# documented capabilities needed to create and verify a GitHub attestation.
+permissions: {}
+
+concurrency:
+  # Preserve each attempted candidate revision as independently inspectable
+  # evidence. Cancellation must not substitute for an observed failure.
+  group: evoguard-pr-head-attest-builder-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # This reusable workflow is intentionally not generic. Its GitHub context
+    # belongs to its caller, so the intended repository, event, and one-off
+    # candidate branch are fixed both here and in the fail-closed shell checks.
+    if: >-
+      github.repository == 'EvoRiseKsa/evoom-guard-finalizer-pilot' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/evoguard/pr-head-attestation-pilot/round1'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      pull-requests: read
+    env:
+      EXPECTED_DEFAULT_BRANCH: main
+      EXPECTED_REF: refs/heads/evoguard/pr-head-attestation-pilot/round1
+      EXPECTED_REPOSITORY: EvoRiseKsa/evoom-guard-finalizer-pilot
+      EXPECTED_REPOSITORY_ID: "1302971633"
+      # This token can read contents and PR metadata. Its only write scope is
+      # GitHub's dedicated attestation endpoint: it has no contents, checks,
+      # issues, packages, or secret write scope, and no candidate worktree is
+      # ever materialized.
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Derive one exact open PR binding from GitHub metadata
+        id: binding
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$GITHUB_REPOSITORY_ID" = "$EXPECTED_REPOSITORY_ID"
+          test "$GITHUB_REF" = "$EXPECTED_REF"
+          test -n "$GH_TOKEN"
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          test "$EXPECTED_DEFAULT_BRANCH" = main
+          test "$EXPECTED_REF" = refs/heads/evoguard/pr-head-attestation-pilot/round1
+
+          head_ref="${GITHUB_REF#refs/heads/}"
+          [[ "$head_ref" =~ ^evoguard/pr-head-attestation-pilot/round1$ ]]
+
+          api_headers="$RUNNER_TEMP/evoguard-pr-head-association.headers"
+          api_body="$RUNNER_TEMP/evoguard-pr-head-association.json"
+          pr_number_file="$RUNNER_TEMP/evoguard-pr-head-number.txt"
+          pr_body="$RUNNER_TEMP/evoguard-pr-head.json"
+          binding="$RUNNER_TEMP/evoguard-pr-head-attestation-binding.json"
+          for path in "$api_headers" "$api_body" "$pr_number_file" "$pr_body" "$binding"; do
+            test ! -e "$path"
+          done
+
+          # This endpoint returns PRs GitHub associates with the immutable
+          # candidate SHA. Bound response files, reject pagination, and choose
+          # exactly one current open same-repository PR before re-fetching it.
+          (
+            ulimit -f 2048
+            curl --fail --silent --show-error \
+              --proto '=https' --tlsv1.2 \
+              --connect-timeout 10 --max-time 30 --retry 2 --retry-delay 1 \
+              --max-filesize 1048576 \
+              --request GET \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              --dump-header "$api_headers" \
+              --output "$api_body" \
+              "https://api.github.com/repos/$EXPECTED_REPOSITORY/commits/$GITHUB_SHA/pulls?per_page=100"
+          )
+
+          for path in "$api_headers" "$api_body"; do
+            test -f "$path"
+            test ! -L "$path"
+            test "$(stat --format=%s "$path")" -gt 0
+            test "$(stat --format=%s "$path")" -le 1048576
+          done
+          if grep -Eiq '^link:.*rel="?next"?' "$api_headers"; then
+            echo 'commit-to-PR association response was paginated; refusing ambiguous input' >&2
+            exit 1
+          fi
+
+          API_BODY="$api_body" PR_NUMBER_FILE="$pr_number_file" HEAD_REF="$head_ref" python3 - <<'PY'
+          import json
+          import os
+          import re
+          import stat
+
+          path = os.environ["API_BODY"]
+          info = os.lstat(path)
+          if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+              raise SystemExit("commit-to-PR response is not a regular file")
+          if info.st_size <= 0 or info.st_size > 1048576:
+              raise SystemExit("commit-to-PR response has an unexpected size")
+          raw = json.loads(open(path, "rb").read())
+          if not isinstance(raw, list) or len(raw) > 100:
+              raise SystemExit("commit-to-PR response has an unexpected shape")
+
+          matches = []
+          for item in raw:
+              if not isinstance(item, dict):
+                  raise SystemExit("commit-to-PR response contains a non-object")
+              base = item.get("base")
+              head = item.get("head")
+              if not isinstance(base, dict) or not isinstance(head, dict):
+                  continue
+              head_repo = head.get("repo")
+              if (
+                  item.get("state") == "open"
+                  and base.get("ref") == os.environ["EXPECTED_DEFAULT_BRANCH"]
+                  and head.get("sha") == os.environ["GITHUB_SHA"]
+                  and head.get("ref") == os.environ["HEAD_REF"]
+                  and isinstance(head_repo, dict)
+                  and head_repo.get("full_name") == os.environ["EXPECTED_REPOSITORY"]
+                  and str(head_repo.get("id")) == os.environ["EXPECTED_REPOSITORY_ID"]
+                  and isinstance(item.get("number"), int)
+                  and item["number"] > 0
+              ):
+                  matches.append(item["number"])
+          if len(matches) != 1:
+              raise SystemExit(
+                  "candidate SHA must map to exactly one open same-repository "
+                  "PR against the expected default branch"
+              )
+          with open(os.environ["PR_NUMBER_FILE"], "x", encoding="ascii", newline="\n") as handle:
+              handle.write(f"{matches[0]}\n")
+          PY
+
+          test -f "$pr_number_file"
+          test ! -L "$pr_number_file"
+          pr_number="$(<"$pr_number_file")"
+          [[ "$pr_number" =~ ^[1-9][0-9]*$ ]]
+
+          # Re-fetch the selected PR immediately before construction. This
+          # detects a head update visible before the second API read rather
+          # than trusting the association listing alone. H is immutable, and
+          # later evidence must still compare this recorded H and base SHA.
+          (
+            ulimit -f 2048
+            curl --fail --silent --show-error \
+              --proto '=https' --tlsv1.2 \
+              --connect-timeout 10 --max-time 30 --retry 2 --retry-delay 1 \
+              --max-filesize 1048576 \
+              --request GET \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              --output "$pr_body" \
+              "https://api.github.com/repos/$EXPECTED_REPOSITORY/pulls/$pr_number"
+          )
+          test -f "$pr_body"
+          test ! -L "$pr_body"
+          test "$(stat --format=%s "$pr_body")" -gt 0
+          test "$(stat --format=%s "$pr_body")" -le 1048576
+
+          PR_BODY="$pr_body" BINDING_PATH="$binding" HEAD_REF="$head_ref" python3 - <<'PY'
+          import json
+          import os
+          import re
+          import stat
+
+          path = os.environ["PR_BODY"]
+          info = os.lstat(path)
+          if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+              raise SystemExit("selected PR response is not a regular file")
+          if info.st_size <= 0 or info.st_size > 1048576:
+              raise SystemExit("selected PR response has an unexpected size")
+          pr = json.loads(open(path, "rb").read())
+          if not isinstance(pr, dict):
+              raise SystemExit("selected PR response is not an object")
+          base = pr.get("base")
+          head = pr.get("head")
+          if not isinstance(base, dict) or not isinstance(head, dict):
+              raise SystemExit("selected PR is missing base or head")
+          base_repo = base.get("repo")
+          head_repo = head.get("repo")
+          if (
+              pr.get("state") != "open"
+              or base.get("ref") != os.environ["EXPECTED_DEFAULT_BRANCH"]
+              or head.get("sha") != os.environ["GITHUB_SHA"]
+              or head.get("ref") != os.environ["HEAD_REF"]
+              or not isinstance(base_repo, dict)
+              or not isinstance(head_repo, dict)
+              or base_repo.get("full_name") != os.environ["EXPECTED_REPOSITORY"]
+              or head_repo.get("full_name") != os.environ["EXPECTED_REPOSITORY"]
+              or str(base_repo.get("id")) != os.environ["EXPECTED_REPOSITORY_ID"]
+              or str(head_repo.get("id")) != os.environ["EXPECTED_REPOSITORY_ID"]
+          ):
+              raise SystemExit("selected PR no longer has the exact expected binding")
+
+          number = pr.get("number")
+          base_sha = base.get("sha")
+          if not isinstance(number, int) or number < 1:
+              raise SystemExit("selected PR has an invalid number")
+          if not isinstance(base_sha, str) or not re.fullmatch(r"[0-9a-f]{40}", base_sha):
+              raise SystemExit("selected PR has an invalid base SHA")
+          document = {
+              "base_ref": os.environ["EXPECTED_DEFAULT_BRANCH"],
+              "base_sha": base_sha,
+              "format": "EVOGUARD_PR_HEAD_ATTESTATION_BINDING_V1",
+              "pr_number": number,
+              "purpose": "candidate-head-provenance-observation-only",
+              "repository": os.environ["EXPECTED_REPOSITORY"],
+              "repository_id": int(os.environ["EXPECTED_REPOSITORY_ID"]),
+              "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "source_digest": os.environ["GITHUB_SHA"],
+              "source_ref": os.environ["GITHUB_REF"],
+          }
+          encoded = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n"
+          if not 1 <= len(encoded) <= 4096:
+              raise SystemExit("constructed binding has an unexpected size")
+          with open(os.environ["BINDING_PATH"], "xb") as handle:
+              handle.write(encoded)
+          PY
+
+          test -f "$binding"
+          test ! -L "$binding"
+          test "$(stat --format=%s "$binding")" -gt 0
+          test "$(stat --format=%s "$binding")" -le 4096
+          sha256sum "$binding" > "$RUNNER_TEMP/evoguard-pr-head-attestation-binding.sha256"
+          printf 'path=%s\n' "$binding" >> "$GITHUB_OUTPUT"
+
+      - name: Generate GitHub provenance for the exact binding bytes
+        id: attest
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: ${{ steps.binding.outputs.path }}
+
+      - name: Capture bounded provider identity
+        id: provider
+        shell: bash
+        env:
+          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          [[ "$ATTESTATION_ID" =~ ^[1-9][0-9]*$ ]]
+          expected_url="https://github.com/$EXPECTED_REPOSITORY/attestations/$ATTESTATION_ID"
+          test "$ATTESTATION_URL" = "$expected_url"
+          test -f "$BUNDLE_PATH"
+          test ! -L "$BUNDLE_PATH"
+          test "$(stat --format=%s "$BUNDLE_PATH")" -gt 1
+          test "$(stat --format=%s "$BUNDLE_PATH")" -le 8388608
+          bundle_copy="$RUNNER_TEMP/evoguard-pr-head-attestation-bundle.jsonl"
+          test ! -e "$bundle_copy"
+          cp -- "$BUNDLE_PATH" "$bundle_copy"
+          test -f "$bundle_copy"
+          test ! -L "$bundle_copy"
+          test "$(stat --format=%s "$bundle_copy")" = "$(stat --format=%s "$BUNDLE_PATH")"
+          cmp --silent -- "$BUNDLE_PATH" "$bundle_copy"
+          bundle_sha256="$(sha256sum "$bundle_copy" | awk '{print $1}')"
+          gh_version="$(gh --version | awk 'NR == 1 { print $3 }')"
+          [[ "$gh_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          help="$(gh attestation verify --help)"
+          for flag in \
+            --repo --signer-workflow --source-ref --source-digest \
+            --predicate-type --cert-oidc-issuer --deny-self-hosted-runners --limit --format; do
+            grep -Fq -- "$flag" <<<"$help" || {
+              echo "required gh attestation verify flag unavailable: $flag" >&2
+              exit 1
+            }
+          done
+          printf 'attestation_id=%s\n' "$ATTESTATION_ID" >> "$GITHUB_OUTPUT"
+          printf 'attestation_url=%s\n' "$ATTESTATION_URL" >> "$GITHUB_OUTPUT"
+          printf 'bundle_sha256=%s\n' "$bundle_sha256" >> "$GITHUB_OUTPUT"
+          printf 'bundle_size=%s\n' "$(stat --format=%s "$bundle_copy")" >> "$GITHUB_OUTPUT"
+          printf 'gh_version=%s\n' "$gh_version" >> "$GITHUB_OUTPUT"
+
+      - name: Re-verify GitHub provenance with exact bounded policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          subject="$RUNNER_TEMP/evoguard-pr-head-attestation-binding.json"
+          checksum="$RUNNER_TEMP/evoguard-pr-head-attestation-binding.sha256"
+          result="$RUNNER_TEMP/github-pr-head-attestation-verify.json"
+          stderr="$RUNNER_TEMP/github-pr-head-attestation-verify.stderr"
+          signer_workflow="$EXPECTED_REPOSITORY/.github/workflows/evoguard-pr-head-attest-builder.yml"
+          max_output_bytes=8388608
+          max_file_blocks=$((max_output_bytes / 512))
+
+          sha256sum --check "$checksum"
+          for attempt in 1 2 3; do
+            if (
+              ulimit -f "$max_file_blocks"
+              exec gh attestation verify "$subject" \
+                --repo "$EXPECTED_REPOSITORY" \
+                --signer-workflow "$signer_workflow" \
+                --source-ref "$EXPECTED_REF" \
+                --source-digest "$GITHUB_SHA" \
+                --predicate-type 'https://slsa.dev/provenance/v1' \
+                --cert-oidc-issuer 'https://token.actions.githubusercontent.com' \
+                --deny-self-hosted-runners \
+                --limit 1 \
+                --format json > "$result" 2> "$stderr"
+            ); then
+              break
+            fi
+            if test "$attempt" = 3; then
+              test -f "$stderr" && test ! -L "$stderr" && head -c 65536 "$stderr" >&2 || true
+              echo 'PR-head attestation verification did not succeed after three attempts.' >&2
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+
+          for path in "$result" "$stderr"; do
+            test -f "$path"
+            test ! -L "$path"
+            test "$(stat --format=%s "$path")" -le "$max_output_bytes"
+          done
+          test "$(stat --format=%s "$result")" -gt 1
+          VERIFY_RESULT="$result" python3 - <<'PY'
+          import json
+          import os
+          import re
+          import stat
+
+          path = os.environ["VERIFY_RESULT"]
+          info = os.lstat(path)
+          if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+              raise SystemExit("verification output is not a regular file")
+          result = json.loads(open(path, "rb").read())
+          if not isinstance(result, list) or len(result) != 1 or not isinstance(result[0], dict):
+              raise SystemExit("provider did not return exactly one verified attestation")
+
+          verification = result[0].get("verificationResult")
+          if not isinstance(verification, dict):
+              raise SystemExit("provider result lacks verificationResult")
+          signature = verification.get("signature")
+          if not isinstance(signature, dict):
+              raise SystemExit("provider result lacks a verified signature")
+          certificate = signature.get("certificate")
+          if not isinstance(certificate, dict):
+              raise SystemExit("provider result lacks a verified certificate")
+          if certificate.get("sourceRepositoryDigest") != os.environ["GITHUB_SHA"]:
+              raise SystemExit("verified certificate lacks the exact sourceRepositoryDigest")
+          signer = certificate.get("buildSignerDigest")
+          if not isinstance(signer, str) or not re.fullmatch(r"[0-9a-f]{40}", signer):
+              raise SystemExit("provider buildSignerDigest has an unexpected format")
+          with open(
+              os.path.join(os.environ["RUNNER_TEMP"], "observed-build-signer-digest.txt"),
+              "x",
+              encoding="ascii",
+              newline="\n",
+          ) as handle:
+              handle.write(signer + "\n")
+          PY
+
+      - name: Record a bounded non-secret observation receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - \
+            "$RUNNER_TEMP/evoguard-pr-head-attestation-binding.json" \
+            "$RUNNER_TEMP/evoguard-pr-head-attestation-binding.sha256" \
+            "$RUNNER_TEMP/github-pr-head-attestation-verify.json" \
+            "$RUNNER_TEMP/observed-build-signer-digest.txt" \
+            "$RUNNER_TEMP/evoguard-pr-head-attestation-receipt.json" <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          import stat
+          import sys
+
+          binding_path, checksum_path, result_path, signer_path, receipt_path = sys.argv[1:]
+
+          def digest(path: str, maximum: int) -> tuple[str, int]:
+              before = os.lstat(path)
+              if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+                  raise SystemExit(f"expected regular file: {path}")
+              if before.st_size <= 0 or before.st_size > maximum:
+                  raise SystemExit(f"expected bounded file: {path}")
+              hasher = hashlib.sha256()
+              with open(path, "rb", buffering=0) as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      hasher.update(chunk)
+              after = os.lstat(path)
+              if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+                  after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns
+              ):
+                  raise SystemExit(f"file changed while hashing: {path}")
+              return hasher.hexdigest(), after.st_size
+
+          binding_sha256, binding_size = digest(binding_path, 4096)
+          checksum = open(checksum_path, encoding="utf-8").read().split()
+          if len(checksum) != 2 or checksum[0] != binding_sha256:
+              raise SystemExit("binding checksum changed")
+          result_sha256, _ = digest(result_path, 8388608)
+          signer = open(signer_path, encoding="ascii").read().strip()
+          if not re.fullmatch(r"[0-9a-f]{40}", signer):
+              raise SystemExit("observed build signer digest is invalid")
+          result = json.loads(open(result_path, "rb").read())
+          if not isinstance(result, list) or len(result) != 1:
+              raise SystemExit("provider did not return exactly one verified result")
+
+          receipt = {
+              "binding": {
+                  "kind": "regular-file-sha256",
+                  "sha256": binding_sha256,
+                  "size": binding_size,
+              },
+              "format": "EVOGUARD_PR_HEAD_ATTESTATION_OBSERVATION_V1",
+              "observation": {
+                  "repository": os.environ["EXPECTED_REPOSITORY"],
+                  "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+                  "run_id": int(os.environ["GITHUB_RUN_ID"]),
+                  "signer_workflow": (
+                      f"{os.environ['EXPECTED_REPOSITORY']}/"
+                      ".github/workflows/evoguard-pr-head-attest-builder.yml"
+                  ),
+                  "source_digest": os.environ["GITHUB_SHA"],
+                  "source_ref": os.environ["EXPECTED_REF"],
+              },
+              "verification": {
+                  "attestation_bundle_sha256": os.environ["ATTESTATION_BUNDLE_SHA256"],
+                  "attestation_bundle_size": int(os.environ["ATTESTATION_BUNDLE_SIZE"]),
+                  "attestation_id": int(os.environ["ATTESTATION_ID"]),
+                  "attestation_limit": 1,
+                  "attestation_url": os.environ["ATTESTATION_URL"],
+                  "cert_oidc_issuer": "https://token.actions.githubusercontent.com",
+                  "deny_self_hosted_runners": True,
+                  "gh_version": os.environ["GH_VERSION"],
+                  "observed_build_signer_digest": signer,
+                  "predicate_type": "https://slsa.dev/provenance/v1",
+                  "provider": "github-artifact-attestation",
+                  "verification_output_sha256": result_sha256,
+              },
+          }
+          with open(receipt_path, "x", encoding="utf-8", newline="\n") as handle:
+              json.dump(receipt, handle, sort_keys=True, separators=(",", ":"))
+              handle.write("\n")
+          PY
+          sha256sum "$RUNNER_TEMP/evoguard-pr-head-attestation-receipt.json" \
+            > "$RUNNER_TEMP/evoguard-pr-head-attestation-receipt.sha256"
+        env:
+          ATTESTATION_BUNDLE_SHA256: ${{ steps.provider.outputs.bundle_sha256 }}
+          ATTESTATION_BUNDLE_SIZE: ${{ steps.provider.outputs.bundle_size }}
+          ATTESTATION_ID: ${{ steps.provider.outputs.attestation_id }}
+          ATTESTATION_URL: ${{ steps.provider.outputs.attestation_url }}
+          GH_VERSION: ${{ steps.provider.outputs.gh_version }}
+
+      - name: Retain non-secret candidate-binding observation
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: evoguard-pr-head-attestation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/evoguard-pr-head-attestation-binding.json
+            ${{ runner.temp }}/evoguard-pr-head-attestation-binding.sha256
+            ${{ runner.temp }}/evoguard-pr-head-attestation-bundle.jsonl
+            ${{ runner.temp }}/github-pr-head-attestation-verify.json
+            ${{ runner.temp }}/observed-build-signer-digest.txt
+            ${{ runner.temp }}/evoguard-pr-head-attestation-receipt.json
+            ${{ runner.temp }}/evoguard-pr-head-attestation-receipt.sha256
+          if-no-files-found: warn
+          overwrite: false
+          retention-days: 7

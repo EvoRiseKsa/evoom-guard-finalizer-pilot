@@ -23,6 +23,18 @@ non-claims are in
 it into an admission, release, deployment, or status-check workflow without a
 new threat-model review.
 
+The reusable PR-head attestation builder and its pre-declared future caller are
+distinct protected trust-root inputs. The eventual caller is untrusted input
+and must have no repository or Environment secret, must not target an
+Environment, and must have no admission, release, deployment, or merge
+authority. The builder's exact workflow identity can later be used in a
+provenance verification policy, so changes to either workflow or their Code
+Owner routing always follow this maintenance procedure. This maintenance change
+increments the declared pilot policy version so later verdict evidence cannot
+silently present it as the prior policy. Its staged method and explicit
+non-claims are in
+[PR_HEAD_ATTESTATION_PILOT.md](PR_HEAD_ATTESTATION_PILOT.md).
+
 ## Required maintenance procedure
 
 1. Open a narrowly scoped pull request and identify it as a trust-root policy

@@ -9,8 +9,10 @@
   "verifier_pack": "security/evoguard-pack",
   "expect_verifier_pack_sha256": "e864e79a2e3ac35fc83a8170b7da2608c5831c282cce01a6583df84400271e7e",
   "protected": [
-    ".github/CODEOWNERS"
+    ".github/CODEOWNERS",
+    ".github/workflows/evoguard-pr-head-attest-builder.yml",
+    ".github/workflows/evoguard-pr-head-attest-caller.yml"
   ],
   "policy_id": "trusted-finalizer-pilot",
-  "policy_version": "1"
+  "policy_version": "2"
 }
