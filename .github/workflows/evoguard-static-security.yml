@@ -20,6 +20,10 @@ on:
       - "security/finalizer-public.pem"
       - "POLICY_MAINTENANCE.md"
 
+# Exercise-only protected-path fixture: this comment lets a separate,
+# intentionally unmerged PR prove that the base-owned audit reads candidate
+# workflow bytes as data while the trusted finalizer rejects trust-root edits.
+
 permissions: {}
 
 jobs:
