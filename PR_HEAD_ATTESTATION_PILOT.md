@@ -16,6 +16,15 @@ This staged pilot asks one narrow provider question:
 The existing manual provider probe proved only protected-default-branch
 metadata. It did not answer this question.
 
+## Round 1 status
+
+The staged method below records the completed Round 1 observation from
+2026-07-18. PR #22 was open when the eligible source head H was pushed and
+verified; it was later closed unmerged after the evidence was retained. This
+document is a protocol and boundary record for that historical experiment. It
+does not authorize a new candidate push, artifact admission, or any production
+operation.
+
 ## Exact trust boundary
 
 The reusable builder is intentionally fixed to this one pilot repository,
