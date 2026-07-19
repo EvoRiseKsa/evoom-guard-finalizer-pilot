@@ -9,7 +9,7 @@ The unresolved identity question is whether a GitHub attestation can bind the **
 
 - Builder trust-root maintenance [PR #20](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/pull/20) merged at `cd6175d7dadb968339090545060d441d181363d5`.
 - Pinned no-secret caller maintenance [PR #21](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/pull/21) merged at `8fafe54d673c096c8c7ee552293bdeef516325cb`.
-- Controlled candidate [PR #22](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/pull/22) remains **open and unmerged**. It changed only the `calc/ops.py` function docstring.
+- Controlled candidate [PR #22](https://github.com/EvoRiseKsa/evoom-guard-finalizer-pilot/pull/22) was open and unmerged when this observation ran. It changed only the `calc/ops.py` function docstring. It was later closed unmerged on 2026-07-18 after the evidence was retained.
 - Immutable base B: `8fafe54d673c096c8c7ee552293bdeef516325cb`
 - Immutable candidate head H: `1b6087051e97785ddf39291d147d0fe4649ef74b`
 - Base tree: `2a33f1bf547157bd24a331f00b96b0ec55e9c3a9`
@@ -91,4 +91,4 @@ This records one positive controlled observation that:
 2. the verified signer digest equals the reviewed PR-A reusable-builder merge; and
 3. the existing Trusted Finalizer independently produced an ALLOW for the same H/base pair.
 
-It does **not** bind any released artifact, package, container image, SBOM, deployment, or merge to this result. It does not prove general behavior across repositories, malicious callers/runners, or attacker-controlled GitHub accounts. It does not close the core artifact-admission issue. PR #22 must remain open and unmerged.
+It does **not** bind any released artifact, package, container image, SBOM, deployment, or merge to this result. It does not prove general behavior across repositories, malicious callers/runners, or attacker-controlled GitHub accounts. It does not close the core artifact-admission issue. PR #22 is intentionally closed and unmerged; the retained H, base, receipt, and verification inputs are the historical record.

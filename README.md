@@ -60,11 +60,13 @@ things.
 staged experiment for the unresolved distinction between a finalizer-allowed
 pull-request head H and a later merged revision M. The first maintenance phase
 installed a dormant reusable builder; the second adds a no-secret caller pinned
-to that builder's immutable maintenance-merge SHA. The caller triggers only on
-one exact temporary source branch, which has not yet been pushed. The initial
-branch push may be rejected before an open PR exists; only a later source-only
-head pushed after the PR opens can become evidence. This is not artifact
-admission, V2 admission, a release or deployment control, or a merge gate.
+to that builder's immutable maintenance-merge SHA. Round 1 is complete: its
+initial branch push failed closed before a PR existed, and the later source-only
+head H pushed after PR #22 opened produced the retained evidence record. PR #22
+was later closed unmerged on 2026-07-18; its historical H and the exact
+verification inputs remain recorded in
+[ROUND3_RESULTS.md](ROUND3_RESULTS.md). This is not artifact admission, V2
+admission, a release or deployment control, or a merge gate.
 
 ## Static workflow v5 boundary record
 
